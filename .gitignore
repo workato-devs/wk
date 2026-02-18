@@ -1,0 +1,20 @@
+# Build output
+bin/
+dist/
+/wk
+
+# Plugin build artifacts
+plugins/example/example
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test artifacts
+*.test
+coverage.out

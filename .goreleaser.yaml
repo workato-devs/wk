@@ -1,0 +1,44 @@
+version: 2
+
+builds:
+  - id: wk
+    main: ./cmd/wk
+    binary: wk
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.ShortCommit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "wk_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+
+brews:
+  - repository:
+      owner: workato-devs
+      name: homebrew-tap
+    name: wk
+    homepage: "https://github.com/workato-devs/wk-cli-beta"
+    description: "Workato CLI - manage your Workato workspace from the terminal"

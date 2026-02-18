@@ -1,0 +1,9 @@
+name = "example"
+version = "0.1.0"
+description = "Example wk plugin demonstrating the JSON-RPC protocol"
+entrypoint = "./example"
+
+[[commands]]
+name = "hello"
+description = "Say hello from the example plugin"
+method = "example.hello"
