@@ -89,3 +89,41 @@ func (s *recipeService) Import(ctx context.Context, folderID int, data []byte) (
 	return &recipe, nil
 }
 
+func (s *recipeService) ListJobs(ctx context.Context, recipeID int, opts *JobListOptions) ([]Job, error) {
+	params := url.Values{}
+	if opts != nil {
+		if opts.Status != "" && opts.Status != "all" {
+			params.Set("status", opts.Status)
+		}
+		if opts.Limit > 0 {
+			params.Set("per_page", strconv.Itoa(opts.Limit))
+		}
+	}
+	path := fmt.Sprintf("/recipes/%d/jobs", recipeID)
+	if len(params) > 0 {
+		path += "?" + params.Encode()
+	}
+	var result ListResult[Job]
+	if err := s.client.do(ctx, "GET", path, nil, &result); err != nil {
+		return nil, err
+	}
+	return result.Items, nil
+}
+
+func (s *recipeService) Copy(ctx context.Context, recipeID, folderID int) (*Recipe, error) {
+	body := map[string]any{"folder_id": folderID}
+	var recipe Recipe
+	if err := s.client.do(ctx, "POST", fmt.Sprintf("/recipes/%d/copy", recipeID), body, &recipe); err != nil {
+		return nil, err
+	}
+	return &recipe, nil
+}
+
+func (s *recipeService) Connect(ctx context.Context, recipeID int, adapterName string, connectionID int) error {
+	body := map[string]any{
+		"adapter_name":  adapterName,
+		"connection_id": connectionID,
+	}
+	return s.client.do(ctx, "PUT", fmt.Sprintf("/recipes/%d/connect", recipeID), body, nil)
+}
+

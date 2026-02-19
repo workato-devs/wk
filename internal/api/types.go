@@ -76,3 +76,98 @@ type Job struct {
 type ListResult[T any] struct {
 	Items []T `json:"items"`
 }
+
+// Tag represents a Workato tag.
+type Tag struct {
+	Handle      string `json:"handle"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Color       string `json:"color,omitempty"`
+}
+
+// TagListOptions configures tag list filtering.
+type TagListOptions struct {
+	Search  string
+	Page    int
+	PerPage int
+}
+
+// TagUpdateOptions configures tag updates.
+type TagUpdateOptions struct {
+	Title       *string
+	Description *string
+	Color       *string
+}
+
+// APICollection represents a Workato API collection.
+type APICollection struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	ProjectID int    `json:"project_id"`
+}
+
+// APIEndpoint represents a Workato API endpoint.
+type APIEndpoint struct {
+	ID              int    `json:"id"`
+	Name            string `json:"name"`
+	APICollectionID int    `json:"api_collection_id"`
+	Active          bool   `json:"active"`
+}
+
+// PaginationOptions provides generic pagination parameters.
+type PaginationOptions struct {
+	Page    int
+	PerPage int
+}
+
+// MCPServerInfo represents the result of an MCP initialize handshake.
+type MCPServerInfo struct {
+	Name            string         `json:"name"`
+	Version         string         `json:"version"`
+	ProtocolVersion string         `json:"protocol_version"`
+	Capabilities    map[string]any `json:"capabilities,omitempty"`
+}
+
+// MCPTool represents a tool exposed by an MCP server.
+type MCPTool struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	InputSchema map[string]any `json:"inputSchema"`
+	Annotations map[string]any `json:"annotations,omitempty"`
+}
+
+// WorkspaceUser represents a Workato workspace member.
+type WorkspaceUser struct {
+	ID    int    `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// AuditLogEntry represents a Workato audit log entry.
+type AuditLogEntry struct {
+	ID        int       `json:"id"`
+	EventType string    `json:"event_type"`
+	UserID    int       `json:"user_id"`
+	CreatedAt time.Time `json:"created_at"`
+	Details   any       `json:"details,omitempty"`
+}
+
+// AuditLogOptions configures audit log filtering.
+type AuditLogOptions struct {
+	Since  string
+	Until  string
+	Action string
+}
+
+// JobListOptions configures job list filtering.
+type JobListOptions struct {
+	Status string
+	Limit  int
+}
+
+// Connector represents a Workato connector (integration).
+type Connector struct {
+	Name        string `json:"name"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+}

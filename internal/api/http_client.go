@@ -18,10 +18,15 @@ type HTTPClient struct {
 	httpClient *http.Client
 	verbose    bool
 
-	recipes     *recipeService
-	connections *connectionService
-	folders     *folderService
-	packages    *packageService
+	recipes        *recipeService
+	connections    *connectionService
+	folders        *folderService
+	packages       *packageService
+	tags           *tagService
+	apiCollections *apiCollectionService
+	apiEndpoints   *apiEndpointService
+	workspace      *workspaceService
+	connectors     *connectorService
 }
 
 // ClientOption configures the HTTPClient.
@@ -89,6 +94,41 @@ func (c *HTTPClient) Packages() PackageService {
 		c.packages = &packageService{client: c}
 	}
 	return c.packages
+}
+
+func (c *HTTPClient) Tags() TagService {
+	if c.tags == nil {
+		c.tags = &tagService{client: c}
+	}
+	return c.tags
+}
+
+func (c *HTTPClient) APICollections() APICollectionService {
+	if c.apiCollections == nil {
+		c.apiCollections = &apiCollectionService{client: c}
+	}
+	return c.apiCollections
+}
+
+func (c *HTTPClient) APIEndpoints() APIEndpointService {
+	if c.apiEndpoints == nil {
+		c.apiEndpoints = &apiEndpointService{client: c}
+	}
+	return c.apiEndpoints
+}
+
+func (c *HTTPClient) Workspace() WorkspaceService {
+	if c.workspace == nil {
+		c.workspace = &workspaceService{client: c}
+	}
+	return c.workspace
+}
+
+func (c *HTTPClient) Connectors() ConnectorService {
+	if c.connectors == nil {
+		c.connectors = &connectorService{client: c}
+	}
+	return c.connectors
 }
 
 // do executes an HTTP request and decodes the response.

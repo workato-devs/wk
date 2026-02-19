@@ -23,6 +23,9 @@ func newRecipesCmd() *cobra.Command {
 	cmd.AddCommand(newRecipesStopCmd())
 	cmd.AddCommand(newRecipesExportCmd())
 	cmd.AddCommand(newRecipesImportCmd())
+	cmd.AddCommand(newRecipesJobsCmd())
+	cmd.AddCommand(newRecipesCopyCmd())
+	cmd.AddCommand(newRecipesConnectCmd())
 	return cmd
 }
 
@@ -262,5 +265,145 @@ func newRecipesImportCmd() *cobra.Command {
 	}
 
 	cmd.Flags().IntVar(&folderID, "folder", 0, "Target folder ID")
+	return cmd
+}
+
+func newRecipesJobsCmd() *cobra.Command {
+	var status string
+	var limit int
+
+	cmd := &cobra.Command{
+		Use:   "jobs <id>",
+		Short: "List recipe jobs",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rctx, err := BuildRunContext(cmd)
+			if err != nil {
+				return err
+			}
+			client, _, err := resolveAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid recipe ID: %s", args[0])
+			}
+
+			opts := &api.JobListOptions{
+				Status: status,
+				Limit:  limit,
+			}
+
+			jobs, err := client.Recipes().ListJobs(cmd.Context(), id, opts)
+			if err != nil {
+				return err
+			}
+
+			if flagJSON {
+				return rctx.Formatter.Format(os.Stdout, jobs)
+			}
+
+			headers := []string{"ID", "STATUS", "STARTED AT", "COMPLETED AT"}
+			var rows [][]string
+			for _, j := range jobs {
+				started := ""
+				if j.StartedAt != nil {
+					started = j.StartedAt.Format(time.RFC3339)
+				}
+				completed := ""
+				if j.CompletedAt != nil {
+					completed = j.CompletedAt.Format(time.RFC3339)
+				}
+				rows = append(rows, []string{
+					strconv.Itoa(j.ID),
+					j.Status,
+					started,
+					completed,
+				})
+			}
+			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+		},
+	}
+
+	cmd.Flags().StringVar(&status, "status", "all", "Filter by status (succeeded, failed, all)")
+	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of jobs to return")
+	return cmd
+}
+
+func newRecipesCopyCmd() *cobra.Command {
+	var toFolder int
+
+	cmd := &cobra.Command{
+		Use:   "copy <id>",
+		Short: "Copy a recipe to a folder",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rctx, err := BuildRunContext(cmd)
+			if err != nil {
+				return err
+			}
+			client, _, err := resolveAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid recipe ID: %s", args[0])
+			}
+
+			recipe, err := client.Recipes().Copy(cmd.Context(), id, toFolder)
+			if err != nil {
+				return err
+			}
+
+			if flagJSON {
+				return rctx.Formatter.Format(os.Stdout, recipe)
+			}
+
+			fmt.Fprintf(os.Stdout, "Recipe %d copied to folder %d, new ID: %d\n", id, toFolder, recipe.ID)
+			return nil
+		},
+	}
+
+	cmd.Flags().IntVar(&toFolder, "to-folder", 0, "Target folder ID")
+	_ = cmd.MarkFlagRequired("to-folder")
+	return cmd
+}
+
+func newRecipesConnectCmd() *cobra.Command {
+	var adapter string
+	var connectionID int
+
+	cmd := &cobra.Command{
+		Use:   "update-connection <id>",
+		Short: "Update a recipe's connection",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, _, err := resolveAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid recipe ID: %s", args[0])
+			}
+
+			if err := client.Recipes().Connect(cmd.Context(), id, adapter, connectionID); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(os.Stdout, "Recipe %d connection updated\n", id)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&adapter, "adapter", "", "Adapter name")
+	cmd.Flags().IntVar(&connectionID, "connection", 0, "Connection ID")
+	_ = cmd.MarkFlagRequired("adapter")
+	_ = cmd.MarkFlagRequired("connection")
 	return cmd
 }

@@ -46,3 +46,7 @@ func (s *folderService) Create(ctx context.Context, name string, parentID *int) 
 	}
 	return &folder, nil
 }
+
+func (s *folderService) Delete(ctx context.Context, id int) error {
+	return s.client.do(ctx, "DELETE", fmt.Sprintf("/folders/%d", id), nil, nil)
+}

@@ -132,6 +132,12 @@ func registerAllCommands(root *cobra.Command) {
 	root.AddCommand(newDiffCmd())
 	root.AddCommand(newCloneCmd())
 	root.AddCommand(newPluginsCmd())
+	root.AddCommand(newFoldersCmd())
+	root.AddCommand(newTagsCmd())
+	root.AddCommand(newAPICmd())
+	root.AddCommand(newMCPCmd())
+	root.AddCommand(newWorkspaceCmd())
+	root.AddCommand(newConnectorsCmd())
 	registerPluginCommands(root)
 }
 

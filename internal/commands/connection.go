@@ -20,6 +20,10 @@ func newConnectionsCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newConnectionsListCmd())
 	cmd.AddCommand(newConnectionsGetCmd())
+	cmd.AddCommand(newConnectionsCreateCmd())
+	cmd.AddCommand(newConnectionsUpdateCmd())
+	cmd.AddCommand(newConnectionsDeleteCmd())
+	cmd.AddCommand(newConnectionsDisconnectCmd())
 	return cmd
 }
 
@@ -130,6 +134,143 @@ func newConnectionsGetCmd() *cobra.Command {
 				return nil
 			}
 			return rctx.Formatter.Format(os.Stdout, conn)
+		},
+	}
+}
+
+func newConnectionsCreateCmd() *cobra.Command {
+	var name, provider string
+	var folderID int
+
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a connection",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rctx, err := BuildRunContext(cmd)
+			if err != nil {
+				return err
+			}
+			client, _, err := resolveAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+
+			var fid *int
+			if cmd.Flags().Changed("folder") {
+				fid = &folderID
+			}
+
+			conn, err := client.Connections().Create(cmd.Context(), name, provider, fid)
+			if err != nil {
+				return err
+			}
+
+			if flagJSON {
+				return rctx.Formatter.Format(os.Stdout, conn)
+			}
+
+			fmt.Fprintf(os.Stdout, "Created connection %q (ID: %d)\n", conn.Name, conn.ID)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&name, "name", "", "Connection name")
+	cmd.Flags().StringVar(&provider, "provider", "", "Connection provider/application")
+	cmd.Flags().IntVar(&folderID, "folder", 0, "Folder ID")
+	_ = cmd.MarkFlagRequired("name")
+	_ = cmd.MarkFlagRequired("provider")
+	return cmd
+}
+
+func newConnectionsUpdateCmd() *cobra.Command {
+	var name string
+
+	cmd := &cobra.Command{
+		Use:   "update <id>",
+		Short: "Update a connection",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rctx, err := BuildRunContext(cmd)
+			if err != nil {
+				return err
+			}
+			client, _, err := resolveAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid connection ID: %s", args[0])
+			}
+
+			conn, err := client.Connections().Update(cmd.Context(), id, name)
+			if err != nil {
+				return err
+			}
+
+			if flagJSON {
+				return rctx.Formatter.Format(os.Stdout, conn)
+			}
+
+			fmt.Fprintf(os.Stdout, "Connection %d updated\n", conn.ID)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&name, "name", "", "New connection name")
+	_ = cmd.MarkFlagRequired("name")
+	return cmd
+}
+
+func newConnectionsDeleteCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Delete a connection",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, _, err := resolveAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid connection ID: %s", args[0])
+			}
+
+			if err := client.Connections().Delete(cmd.Context(), id); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(os.Stdout, "Connection %d deleted\n", id)
+			return nil
+		},
+	}
+}
+
+func newConnectionsDisconnectCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "disconnect <id>",
+		Short: "Disconnect a connection",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, _, err := resolveAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid connection ID: %s", args[0])
+			}
+
+			if err := client.Connections().Disconnect(cmd.Context(), id); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(os.Stdout, "Connection %d disconnected\n", id)
+			return nil
 		},
 	}
 }

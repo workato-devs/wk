@@ -27,6 +27,10 @@ func (m *mockFolderService) Create(_ context.Context, _ string, _ *int) (*api.Fo
 	return nil, nil
 }
 
+func (m *mockFolderService) Delete(_ context.Context, _ int) error {
+	return nil
+}
+
 func newTestEngine(folders map[int][]api.Folder) *SyncEngine {
 	return &SyncEngine{
 		folders: &mockFolderService{folders: folders},
