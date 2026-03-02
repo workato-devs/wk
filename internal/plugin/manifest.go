@@ -6,13 +6,20 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
+// HookConfig declares lifecycle hooks a plugin wants to intercept.
+type HookConfig struct {
+	PrePush  string `toml:"pre-push,omitempty"`
+	PostPull string `toml:"post-pull,omitempty"` // reserved, not dispatched yet
+}
+
 // Manifest represents a plugin.toml file describing a plugin.
 type Manifest struct {
-	Name        string    `toml:"name"`
-	Version     string    `toml:"version"`
-	Description string    `toml:"description"`
-	Entrypoint  string    `toml:"entrypoint"`
-	Commands    []Command `toml:"commands"`
+	Name        string     `toml:"name"`
+	Version     string     `toml:"version"`
+	Description string     `toml:"description"`
+	Entrypoint  string     `toml:"entrypoint"`
+	Commands    []Command  `toml:"commands"`
+	Hooks       HookConfig `toml:"hooks"`
 }
 
 // Command is a top-level command exposed by a plugin.

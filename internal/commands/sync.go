@@ -8,6 +8,7 @@ import (
 
 	"github.com/workato-devs/wk-cli-beta/internal/config"
 	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
+	"github.com/workato-devs/wk-cli-beta/internal/plugin"
 	"github.com/workato-devs/wk-cli-beta/internal/sync"
 )
 
@@ -90,6 +91,7 @@ func newPushCmd() *cobra.Command {
 		flagFolder        string
 		flagDryRun        bool
 		flagPreserveState bool
+		flagSkipHooks     bool
 	)
 
 	cmd := &cobra.Command{
@@ -108,6 +110,13 @@ func newPushCmd() *cobra.Command {
 			entry, err := resolveSyncEntry(rctx.Config, flagFolder)
 			if err != nil {
 				return err
+			}
+
+			// Run pre-push hooks unless skipped, dry-run, or no registry.
+			if !flagSkipHooks && !flagDryRun && rctx.PluginRegistry != nil {
+				if err := runPrePushHooks(rctx, entry); err != nil {
+					return err
+				}
 			}
 
 			client, _, err := resolveAPIClient(cmd)
@@ -144,8 +153,57 @@ func newPushCmd() *cobra.Command {
 	cmd.Flags().StringVar(&flagFolder, "folder", "", "Sync entry filter (server_path or local_path)")
 	cmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "Show what would be pushed without uploading")
 	cmd.Flags().BoolVar(&flagPreserveState, "preserve-state", true, "Preserve recipe active state on import")
+	cmd.Flags().BoolVar(&flagSkipHooks, "skip-hooks", false, "Skip plugin pre-push hooks")
 
 	return cmd
+}
+
+// runPrePushHooks runs all registered pre-push hooks and blocks push if any fail.
+func runPrePushHooks(rctx *RunContext, entry config.SyncEntry) error {
+	// Status() is local-only — no API client needed.
+	statusEngine := sync.NewSyncEngine(rctx.ProjectRoot, rctx.Config, nil)
+	statuses, err := statusEngine.Status(entry)
+	if err != nil {
+		// Non-fatal: warn and continue.
+		fmt.Fprintf(os.Stderr, "Warning: could not compute file status for hooks: %v\n", err)
+		return nil
+	}
+
+	hookFiles := make([]plugin.HookFile, len(statuses))
+	for i, s := range statuses {
+		hookFiles[i] = plugin.HookFile{
+			Path:       s.FilePath,
+			Status:     string(s.Status),
+			ServerPath: s.ServerPath,
+		}
+	}
+
+	params := plugin.HookParams{
+		ProjectRoot: rctx.ProjectRoot,
+		Files:       hookFiles,
+	}
+
+	results, err := plugin.RunPrePushHook(rctx.PluginRegistry, params)
+	if err != nil {
+		// Fail-open: warn and continue.
+		fmt.Fprintf(os.Stderr, "Warning: pre-push hook error: %v\n", err)
+		return nil
+	}
+	if results == nil {
+		return nil
+	}
+
+	// Print any diagnostics.
+	plugin.FormatHookResults(os.Stderr, results, flagJSON)
+
+	// Block push if any hook reported failure.
+	for _, r := range results {
+		if !r.Passed {
+			return fmt.Errorf("pre-push hook %q failed — push blocked (use --skip-hooks to bypass)", r.PluginName)
+		}
+	}
+
+	return nil
 }
 
 func newStatusCmd() *cobra.Command {

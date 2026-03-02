@@ -33,14 +33,15 @@ func SetVersionInfo(version, commit, date string) {
 // RunContext carries resolved dependencies into every command handler.
 // No global state — everything a command needs is here.
 type RunContext struct {
-	Config      *config.Config
-	ProjectRoot string
-	AuthStore   auth.CredentialStore
-	APIClient   api.Client
-	Formatter   output.Formatter
-	Profile     *auth.Profile
-	Verbose     bool
-	Quiet       bool
+	Config         *config.Config
+	ProjectRoot    string
+	AuthStore      auth.CredentialStore
+	APIClient      api.Client
+	Formatter      output.Formatter
+	Profile        *auth.Profile
+	PluginRegistry *plugin.Registry
+	Verbose        bool
+	Quiet          bool
 }
 
 var (
@@ -99,6 +100,11 @@ func BuildRunContext(cmd *cobra.Command) (*RunContext, error) {
 				rctx.ProjectRoot = projectRoot
 			}
 		}
+	}
+
+	// Initialize plugin registry (best-effort — not all environments have $HOME)
+	if reg, err := plugin.NewRegistry(); err == nil {
+		rctx.PluginRegistry = reg
 	}
 
 	return rctx, nil

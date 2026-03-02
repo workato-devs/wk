@@ -49,6 +49,64 @@ method = "test.greet"
 	}
 }
 
+func TestLoadManifestWithHooks(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "plugin.toml")
+
+	content := `name = "lint-plugin"
+version = "0.2.0"
+description = "A linter plugin"
+entrypoint = "./bin/lint"
+
+[hooks]
+pre-push = "lint.pre_push"
+
+[[commands]]
+name = "lint"
+description = "Run linter"
+method = "lint.run"
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := LoadManifest(path)
+	if err != nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+
+	if m.Hooks.PrePush != "lint.pre_push" {
+		t.Errorf("Hooks.PrePush = %q, want %q", m.Hooks.PrePush, "lint.pre_push")
+	}
+	if m.Hooks.PostPull != "" {
+		t.Errorf("Hooks.PostPull = %q, want empty", m.Hooks.PostPull)
+	}
+}
+
+func TestLoadManifestWithoutHooks(t *testing.T) {
+	// Verify backward compat: existing manifests without [hooks] still parse fine.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "plugin.toml")
+
+	content := `name = "no-hooks"
+version = "1.0.0"
+description = "Plugin without hooks"
+entrypoint = "./bin/test"
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := LoadManifest(path)
+	if err != nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+
+	if m.Hooks.PrePush != "" {
+		t.Errorf("Hooks.PrePush = %q, want empty", m.Hooks.PrePush)
+	}
+}
+
 func TestLoadManifestNotFound(t *testing.T) {
 	_, err := LoadManifest("/nonexistent/plugin.toml")
 	if err == nil {
