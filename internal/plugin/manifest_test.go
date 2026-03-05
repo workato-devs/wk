@@ -107,6 +107,72 @@ entrypoint = "./bin/test"
 	}
 }
 
+func TestLoadManifestWithArgsAndFlags(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "plugin.toml")
+
+	content := `name = "lint-plugin"
+version = "0.2.0"
+description = "A linter plugin"
+entrypoint = "./bin/lint"
+
+[[commands]]
+name = "lint"
+description = "Run linter"
+method = "lint.run"
+
+[[commands.args]]
+name = "files"
+description = "Files to lint"
+required = true
+
+[[commands.flags]]
+name = "skills-path"
+description = "Path to skills"
+type = "string"
+
+[[commands.flags]]
+name = "tiers"
+description = "Lint tiers"
+type = "int-array"
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := LoadManifest(path)
+	if err != nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+
+	cmd := m.Commands[0]
+	if len(cmd.Args) != 1 {
+		t.Fatalf("Args len = %d, want 1", len(cmd.Args))
+	}
+	if cmd.Args[0].Name != "files" {
+		t.Errorf("Args[0].Name = %q, want %q", cmd.Args[0].Name, "files")
+	}
+	if !cmd.Args[0].Required {
+		t.Error("Args[0].Required = false, want true")
+	}
+
+	if len(cmd.Flags) != 2 {
+		t.Fatalf("Flags len = %d, want 2", len(cmd.Flags))
+	}
+	if cmd.Flags[0].Name != "skills-path" {
+		t.Errorf("Flags[0].Name = %q, want %q", cmd.Flags[0].Name, "skills-path")
+	}
+	if cmd.Flags[0].Type != "string" {
+		t.Errorf("Flags[0].Type = %q, want %q", cmd.Flags[0].Type, "string")
+	}
+	if cmd.Flags[1].Name != "tiers" {
+		t.Errorf("Flags[1].Name = %q, want %q", cmd.Flags[1].Name, "tiers")
+	}
+	if cmd.Flags[1].Type != "int-array" {
+		t.Errorf("Flags[1].Type = %q, want %q", cmd.Flags[1].Type, "int-array")
+	}
+}
+
 func TestLoadManifestNotFound(t *testing.T) {
 	_, err := LoadManifest("/nonexistent/plugin.toml")
 	if err == nil {

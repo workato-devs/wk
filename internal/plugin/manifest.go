@@ -27,6 +27,8 @@ type Command struct {
 	Name        string       `toml:"name"`
 	Description string       `toml:"description"`
 	Method      string       `toml:"method,omitempty"`
+	Args        []Arg        `toml:"args,omitempty"`
+	Flags       []Flag       `toml:"flags,omitempty"`
 	Subcommands []Subcommand `toml:"subcommands,omitempty"`
 }
 
@@ -36,13 +38,23 @@ type Subcommand struct {
 	Description string `toml:"description"`
 	Method      string `toml:"method"`
 	Args        []Arg  `toml:"args,omitempty"`
+	Flags       []Flag `toml:"flags,omitempty"`
 }
 
-// Arg describes a positional argument for a subcommand.
+// Arg describes a positional argument for a command or subcommand.
 type Arg struct {
 	Name        string `toml:"name"`
 	Description string `toml:"description,omitempty"`
 	Required    bool   `toml:"required,omitempty"`
+}
+
+// Flag describes a named flag for a command or subcommand.
+// Supported types: "string" (default), "int", "bool", "string-array", "int-array".
+type Flag struct {
+	Name        string `toml:"name"`
+	Description string `toml:"description,omitempty"`
+	Type        string `toml:"type,omitempty"`
+	Default     string `toml:"default,omitempty"`
 }
 
 // LoadManifest reads and parses a plugin.toml file.

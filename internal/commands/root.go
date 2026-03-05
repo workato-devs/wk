@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -157,8 +158,19 @@ func hasCommand(root *cobra.Command, name string) bool {
 	return false
 }
 
+// pluginCmdDef holds the arg/flag declarations for a plugin command so that
+// makePluginRunE can build a structured params object instead of sending a raw
+// string array.
+type pluginCmdDef struct {
+	Args  []plugin.Arg
+	Flags []plugin.Flag
+}
+
 // makePluginRunE creates a RunE function that loads a plugin and calls a method.
-func makePluginRunE(pluginDir, method string) func(*cobra.Command, []string) error {
+// If def is non-nil and declares args or flags, the positional args and flag
+// values are assembled into a JSON object; otherwise args are passed as a raw
+// string array for backwards compatibility.
+func makePluginRunE(pluginDir, method string, def *pluginCmdDef) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		host := plugin.NewPluginHost()
 		defer host.StopAll()
@@ -172,7 +184,9 @@ func makePluginRunE(pluginDir, method string) func(*cobra.Command, []string) err
 			return fmt.Errorf("cannot read plugin manifest")
 		}
 
-		result, err := host.Execute(m.Name, method, args)
+		params := buildPluginParams(cmd, args, def)
+
+		result, err := host.Execute(m.Name, method, params)
 		if err != nil {
 			return err
 		}
@@ -196,6 +210,54 @@ func makePluginRunE(pluginDir, method string) func(*cobra.Command, []string) err
 		fmt.Fprintf(os.Stdout, "%s\n", string(result))
 		return nil
 	}
+}
+
+// buildPluginParams constructs the RPC params value from positional args and
+// cobra flags. When no arg/flag declarations exist it returns the raw []string
+// for backwards compatibility.
+func buildPluginParams(cmd *cobra.Command, args []string, def *pluginCmdDef) any {
+	if def == nil || (len(def.Args) == 0 && len(def.Flags) == 0) {
+		return args
+	}
+
+	obj := make(map[string]any)
+
+	// Map positional args using the first declared arg name.
+	if len(def.Args) > 0 {
+		obj[def.Args[0].Name] = args
+	}
+
+	// Map each declared flag that was explicitly set on the command line.
+	for _, f := range def.Flags {
+		if !cmd.Flags().Changed(f.Name) {
+			continue
+		}
+		key := flagToJSON(f.Name)
+		switch f.Type {
+		case "int":
+			val, _ := cmd.Flags().GetInt(f.Name)
+			obj[key] = val
+		case "int-array":
+			val, _ := cmd.Flags().GetIntSlice(f.Name)
+			obj[key] = val
+		case "bool":
+			val, _ := cmd.Flags().GetBool(f.Name)
+			obj[key] = val
+		case "string-array":
+			val, _ := cmd.Flags().GetStringSlice(f.Name)
+			obj[key] = val
+		default: // "string" or empty
+			val, _ := cmd.Flags().GetString(f.Name)
+			obj[key] = val
+		}
+	}
+
+	return obj
+}
+
+// flagToJSON converts kebab-case flag names to snake_case JSON field names.
+func flagToJSON(name string) string {
+	return strings.ReplaceAll(name, "-", "_")
 }
 
 // registerPluginCommands discovers installed plugins and registers their
@@ -223,25 +285,49 @@ func registerPluginCommands(root *cobra.Command) {
 			}
 
 			if pcmd.Method != "" {
-				root.AddCommand(&cobra.Command{
+				def := &pluginCmdDef{Args: pcmd.Args, Flags: pcmd.Flags}
+				cmd := &cobra.Command{
 					Use:   pcmd.Name,
 					Short: pcmd.Description,
-					RunE:  makePluginRunE(p.Dir, pcmd.Method),
-				})
+					RunE:  makePluginRunE(p.Dir, pcmd.Method, def),
+				}
+				registerPluginFlags(cmd, pcmd.Flags)
+				root.AddCommand(cmd)
 			} else if len(pcmd.Subcommands) > 0 {
 				parent := &cobra.Command{
 					Use:   pcmd.Name,
 					Short: pcmd.Description,
 				}
 				for _, sub := range pcmd.Subcommands {
-					parent.AddCommand(&cobra.Command{
+					def := &pluginCmdDef{Args: sub.Args, Flags: sub.Flags}
+					child := &cobra.Command{
 						Use:   sub.Name,
 						Short: sub.Description,
-						RunE:  makePluginRunE(p.Dir, sub.Method),
-					})
+						RunE:  makePluginRunE(p.Dir, sub.Method, def),
+					}
+					registerPluginFlags(child, sub.Flags)
+					parent.AddCommand(child)
 				}
 				root.AddCommand(parent)
 			}
+		}
+	}
+}
+
+// registerPluginFlags registers declared flags on a cobra command.
+func registerPluginFlags(cmd *cobra.Command, flags []plugin.Flag) {
+	for _, f := range flags {
+		switch f.Type {
+		case "int":
+			cmd.Flags().Int(f.Name, 0, f.Description)
+		case "int-array":
+			cmd.Flags().IntSlice(f.Name, nil, f.Description)
+		case "bool":
+			cmd.Flags().Bool(f.Name, false, f.Description)
+		case "string-array":
+			cmd.Flags().StringSlice(f.Name, nil, f.Description)
+		default: // "string" or empty
+			cmd.Flags().String(f.Name, f.Default, f.Description)
 		}
 	}
 }
