@@ -73,10 +73,17 @@ type Job struct {
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
-// ListResult is a generic wrapper for paginated API responses.
-// Used by recipes (which return {"items":[...]}) but not connections/folders (which return bare arrays).
+// ListResult is a generic wrapper for paginated API responses
+// that return {"items":[...]}, e.g. recipes and jobs.
 type ListResult[T any] struct {
 	Items []T `json:"items"`
+}
+
+// ResultList is a generic wrapper for API responses that return
+// {"result":[...]}, e.g. tags, connections, folders, connectors,
+// api_collections, api_endpoints, members, and activity_logs.
+type ResultList[T any] struct {
+	Result []T `json:"result"`
 }
 
 // Tag represents a Workato tag.

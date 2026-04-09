@@ -28,11 +28,11 @@ func (s *connectionService) List(ctx context.Context, opts *ConnectionListOption
 	if len(params) > 0 {
 		path += "?" + params.Encode()
 	}
-	var result []Connection
+	var result ResultList[Connection]
 	if err := s.client.do(ctx, "GET", path, nil, &result); err != nil {
 		return nil, err
 	}
-	return result, nil
+	return result.Result, nil
 }
 
 func (s *connectionService) Get(ctx context.Context, id int) (*Connection, error) {

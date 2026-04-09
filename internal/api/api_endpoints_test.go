@@ -17,7 +17,9 @@ func TestAPIEndpointService_List(t *testing.T) {
 			t.Errorf("api_collection_id = %q, want 5", cid)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]APIEndpoint{{ID: 1, Name: "ep1", APICollectionID: 5, Active: true, Method: "GET", Path: "/users", RecipeID: 42}})
+		json.NewEncoder(w).Encode(map[string]any{
+				"result": []APIEndpoint{{ID: 1, Name: "ep1", APICollectionID: 5, Active: true, Method: "GET", Path: "/users", RecipeID: 42}},
+			})
 	}))
 	defer srv.Close()
 
