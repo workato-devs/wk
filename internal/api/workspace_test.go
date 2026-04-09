@@ -37,7 +37,9 @@ func TestWorkspaceService_ListMembers(t *testing.T) {
 			t.Errorf("email = %q, want bob@example.com", r.URL.Query().Get("email"))
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]WorkspaceUser{{ID: 2, Name: "Bob", Email: "bob@example.com"}})
+		json.NewEncoder(w).Encode(map[string]any{
+				"result": []WorkspaceUser{{ID: 2, Name: "Bob", Email: "bob@example.com"}},
+			})
 	}))
 	defer srv.Close()
 
@@ -63,7 +65,9 @@ func TestWorkspaceService_GetAuditLogs(t *testing.T) {
 			t.Errorf("event_type = %q, want recipe_started", r.URL.Query().Get("event_type"))
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]AuditLogEntry{{ID: 1, EventType: "recipe_started", UserID: 10}})
+		json.NewEncoder(w).Encode(map[string]any{
+				"result": []AuditLogEntry{{ID: 1, EventType: "recipe_started", UserID: 10}},
+			})
 	}))
 	defer srv.Close()
 

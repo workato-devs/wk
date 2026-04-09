@@ -26,11 +26,11 @@ func (s *workspaceService) ListMembers(ctx context.Context, email string) ([]Wor
 	if len(params) > 0 {
 		path += "?" + params.Encode()
 	}
-	var result []WorkspaceUser
+	var result ResultList[WorkspaceUser]
 	if err := s.client.do(ctx, "GET", path, nil, &result); err != nil {
 		return nil, err
 	}
-	return result, nil
+	return result.Result, nil
 }
 
 func (s *workspaceService) GetAuditLogs(ctx context.Context, opts *AuditLogOptions) ([]AuditLogEntry, error) {
@@ -50,9 +50,9 @@ func (s *workspaceService) GetAuditLogs(ctx context.Context, opts *AuditLogOptio
 	if len(params) > 0 {
 		path += "?" + params.Encode()
 	}
-	var result []AuditLogEntry
+	var result ResultList[AuditLogEntry]
 	if err := s.client.do(ctx, "GET", path, nil, &result); err != nil {
 		return nil, err
 	}
-	return result, nil
+	return result.Result, nil
 }
