@@ -7,8 +7,8 @@ func Validate(cfg *Config) error {
 	if cfg.Name == "" {
 		return fmt.Errorf("project name is required")
 	}
-	if cfg.Workspace == "" {
-		return fmt.Errorf("workspace profile is required")
+	if cfg.Profile == "" {
+		return fmt.Errorf("profile is required in wk.toml (run 'wk auth login' to create one)")
 	}
 	for i, s := range cfg.Sync {
 		if s.ServerPath == "" {

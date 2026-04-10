@@ -55,7 +55,7 @@ func verifyServerPath(cmd *cobra.Command, client api.Client, serverPath string) 
 func newInitCmd() *cobra.Command {
 	var (
 		flagName       string
-		flagWorkspace  string
+		flagProfile    string
 		flagServerPath string
 		flagLocalPath  string
 		flagVerify     bool
@@ -79,19 +79,19 @@ func newInitCmd() *cobra.Command {
 			// Check if wk.toml already exists in the current directory.
 			configPath := filepath.Join(cwd, config.ProjectFile)
 			if _, err := os.Stat(configPath); err == nil {
-				return fmt.Errorf("wk.toml already exists. Use 'wk link' to update workspace.")
+				return fmt.Errorf("wk.toml already exists. Use 'wk link' to update the linked profile.")
 			}
 
 			name := flagName
-			workspace := flagWorkspace
+			profile := flagProfile
 
 			if flagJSON {
-				// Non-interactive: require --name and --workspace.
+				// Non-interactive: require --name and --profile.
 				if name == "" {
 					return fmt.Errorf("--name is required in non-interactive (--json) mode")
 				}
-				if workspace == "" {
-					return fmt.Errorf("--workspace is required in non-interactive (--json) mode")
+				if profile == "" {
+					return fmt.Errorf("--profile is required in non-interactive (--json) mode")
 				}
 			} else {
 				// Interactive: prompt for missing values.
@@ -104,19 +104,19 @@ func newInitCmd() *cobra.Command {
 						return fmt.Errorf("project name is required")
 					}
 				}
-				if workspace == "" {
-					fmt.Print("Workspace profile: ")
-					workspace, _ = reader.ReadString('\n')
-					workspace = strings.TrimSpace(workspace)
-					if workspace == "" {
-						return fmt.Errorf("workspace profile is required")
+				if profile == "" {
+					fmt.Print("Auth profile: ")
+					profile, _ = reader.ReadString('\n')
+					profile = strings.TrimSpace(profile)
+					if profile == "" {
+						return fmt.Errorf("auth profile is required")
 					}
 				}
 			}
 
 			cfg := &config.Config{
-				Name:      name,
-				Workspace: workspace,
+				Name:    name,
+				Profile: profile,
 			}
 
 			if flagServerPath != "" {
@@ -150,23 +150,23 @@ func newInitCmd() *cobra.Command {
 			}
 
 			result := map[string]string{
-				"status":    "initialized",
-				"name":      name,
-				"workspace": workspace,
-				"path":      configPath,
+				"status":  "initialized",
+				"name":    name,
+				"profile": profile,
+				"path":    configPath,
 			}
 
 			if flagJSON {
 				return rctx.Formatter.Format(cmd.OutOrStdout(), result)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Initialized wk project %q (workspace: %s) at %s\n", name, workspace, configPath)
+			fmt.Fprintf(cmd.OutOrStdout(), "Initialized wk project %q (profile: %s) at %s\n", name, profile, configPath)
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&flagName, "name", "", "Project name")
-	cmd.Flags().StringVar(&flagWorkspace, "workspace", "", "Workspace profile name")
+	cmd.Flags().StringVar(&flagProfile, "profile", "", "Auth profile name")
 	cmd.Flags().StringVar(&flagServerPath, "server-path", "", "Initial sync server path")
 	cmd.Flags().StringVar(&flagLocalPath, "local-path", "", "Initial sync local path (defaults to server-path leaf)")
 	cmd.Flags().BoolVar(&flagVerify, "verify", false, "Validate server-path exists on Workato before saving")
