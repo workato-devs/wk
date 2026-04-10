@@ -4,7 +4,8 @@ dist/
 /wk
 
 # Plugin build artifacts
-plugins/example/example
+ plugins/*
+ !plugins/example/
 
 # OS
 .DS_Store
