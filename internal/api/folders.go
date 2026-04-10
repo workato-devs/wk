@@ -20,11 +20,11 @@ func (s *folderService) List(ctx context.Context, parentID *int) ([]Folder, erro
 	if len(params) > 0 {
 		path += "?" + params.Encode()
 	}
-	var result []Folder
+	var result ResultList[Folder]
 	if err := s.client.do(ctx, "GET", path, nil, &result); err != nil {
 		return nil, err
 	}
-	return result, nil
+	return result.Result, nil
 }
 
 func (s *folderService) Get(ctx context.Context, id int) (*Folder, error) {

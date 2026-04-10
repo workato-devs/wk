@@ -28,11 +28,11 @@ func (s *tagService) List(ctx context.Context, opts *TagListOptions) ([]Tag, err
 	if len(params) > 0 {
 		path += "?" + params.Encode()
 	}
-	var result []Tag
+	var result ResultList[Tag]
 	if err := s.client.do(ctx, "GET", path, nil, &result); err != nil {
 		return nil, err
 	}
-	return result, nil
+	return result.Result, nil
 }
 
 func (s *tagService) Create(ctx context.Context, title, description, color string) (*Tag, error) {
