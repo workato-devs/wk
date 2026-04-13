@@ -30,8 +30,6 @@ func (s *workspaceService) ListMembers(ctx context.Context, email string) ([]Wor
 		Data []WorkspaceUser `json:"data"`
 	}
 	if err := s.client.do(ctx, "GET", path, nil, &wrapper); err != nil {
-	var result ResultList[WorkspaceUser]
-	if err := s.client.do(ctx, "GET", path, nil, &result); err != nil {
 		return nil, err
 	}
 	return wrapper.Data, nil
