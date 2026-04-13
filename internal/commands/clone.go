@@ -21,7 +21,7 @@ func newCloneCmd() *cobra.Command {
 		Use:   "clone <folder-name>",
 		Short: "Clone a remote folder into a new local project",
 		Long:  "Initialize a new wk project and pull assets from the specified remote folder.",
-		Args:  cobra.ExactArgs(1),
+		Args: requireArgs(1, "folder name is required, e.g.: wk clone <folder-name>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			folderName := args[0]
 

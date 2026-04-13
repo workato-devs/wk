@@ -98,7 +98,7 @@ func newConnectionsGetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "get <id>",
 		Short: "Get connection details",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "connection ID is required, e.g.: wk connections get <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -189,7 +189,7 @@ func newConnectionsUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <id>",
 		Short: "Update a connection",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "connection ID is required, e.g.: wk connections update <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -228,7 +228,7 @@ func newConnectionsDeleteCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete a connection",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "connection ID is required, e.g.: wk connections delete <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
@@ -254,7 +254,7 @@ func newConnectionsDisconnectCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "disconnect <id>",
 		Short: "Disconnect a connection",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "connection ID is required, e.g.: wk connections disconnect <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {

@@ -173,7 +173,7 @@ func newAuthSwitchCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "switch <name>",
 		Short: "Switch active profile",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "profile name is required, e.g.: wk auth switch <name>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			pm := auth.NewProfileManager()

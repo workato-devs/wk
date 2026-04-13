@@ -111,6 +111,17 @@ func BuildRunContext(cmd *cobra.Command) (*RunContext, error) {
 	return rctx, nil
 }
 
+// requireArgs returns a cobra.PositionalArgs validator that checks for exactly n
+// args and returns a user-friendly message instead of the generic cobra error.
+func requireArgs(n int, msg string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) < n {
+			return fmt.Errorf("%s\n\nUsage: %s", msg, cmd.UseLine())
+		}
+		return cobra.ExactArgs(n)(cmd, args)
+	}
+}
+
 // Execute runs the root command.
 func Execute(ctx context.Context) int {
 	root := NewRootCmd()

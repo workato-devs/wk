@@ -77,7 +77,7 @@ func newFoldersCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create <name>",
 		Short: "Create a folder",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "folder name is required, e.g.: wk folders create <name>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -115,7 +115,7 @@ func newFoldersDeleteCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete a folder",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "folder ID is required, e.g.: wk folders delete <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
