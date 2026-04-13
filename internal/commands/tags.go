@@ -71,7 +71,7 @@ func newTagsCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create <title>",
 		Short: "Create a tag",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "tag title is required, e.g.: wk tags create <title>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -107,7 +107,7 @@ func newTagsUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <handle>",
 		Short: "Update a tag",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "tag handle is required, e.g.: wk tags update <handle>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -153,7 +153,7 @@ func newTagsDeleteCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "delete <handle>",
 		Short: "Delete a tag",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "tag handle is required, e.g.: wk tags delete <handle>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
@@ -176,7 +176,7 @@ func newTagsApplyCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "apply <handle>",
 		Short: "Apply a tag to recipes or connections",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "tag handle is required, e.g.: wk tags apply <handle> --to recipe:123"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
@@ -208,7 +208,7 @@ func newTagsRemoveCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove <handle>",
 		Short: "Remove a tag from recipes or connections",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "tag handle is required, e.g.: wk tags remove <handle> --from recipe:123"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {

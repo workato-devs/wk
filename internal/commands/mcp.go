@@ -24,7 +24,7 @@ func newMCPTestCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "test <url>",
 		Short: "Test MCP server connectivity",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "server URL is required, e.g.: wk mcp test <url>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -57,7 +57,7 @@ func newMCPToolsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "tools <url>",
 		Short: "List tools exposed by an MCP server",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "server URL is required, e.g.: wk mcp tools <url>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
