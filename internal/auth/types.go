@@ -48,7 +48,8 @@ type Credential struct {
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
-// Profile represents a named workspace authentication profile.
+// Profile represents a named authentication profile targeting a specific
+// workspace, environment, and region combination.
 type Profile struct {
 	Name       string     `json:"name"`
 	Region     Region     `json:"region"`

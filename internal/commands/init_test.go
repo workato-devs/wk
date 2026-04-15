@@ -51,7 +51,7 @@ func TestInitLocalPathDefaultsToServerPathLeaf(t *testing.T) {
 			// Build args for init command
 			args := []string{
 				"--name", "test-proj",
-				"--workspace", "dev",
+				"--profile", "dev",
 				"--server-path", tt.serverPath,
 				"--json",
 			}

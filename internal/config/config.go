@@ -15,7 +15,7 @@ const ProjectFile = "wk.toml"
 type Config struct {
 	Name        string      `toml:"name"`
 	Description string      `toml:"description,omitempty"`
-	Workspace   string      `toml:"workspace"`
+	Profile     string      `toml:"profile"`
 	Plugins     []string    `toml:"plugins,omitempty"`
 	MCP         MCPConfig   `toml:"mcp,omitempty"`
 	Sync        []SyncEntry `toml:"sync,omitempty"`

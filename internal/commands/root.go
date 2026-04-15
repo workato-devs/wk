@@ -71,7 +71,7 @@ Every command supports --json for machine-readable output.`,
 	pf.BoolVar(&flagJSON, "json", false, "Output as JSON")
 	pf.BoolVar(&flagVerbose, "verbose", false, "Enable verbose/debug logging")
 	pf.BoolVar(&flagQuiet, "quiet", false, "Suppress non-essential output")
-	pf.StringVar(&flagProfile, "profile", "", "Override active workspace profile")
+	pf.StringVar(&flagProfile, "profile", "", "Override active auth profile")
 	pf.BoolVar(&flagNoColor, "no-color", false, "Disable color output")
 	pf.IntVar(&flagTimeout, "timeout", config.DefaultTimeout, "API timeout in seconds")
 

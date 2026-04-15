@@ -16,11 +16,7 @@ dist/
 *.swp
 *.swo
 
-# Test artifacts
+# Test & Dev artifacts
 *.test
 coverage.out
-
-# Development artifacts
-TODO.md
-HANDOFF.md
-.env
+*.env

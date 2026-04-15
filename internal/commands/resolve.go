@@ -34,13 +34,13 @@ func resolveAPIClient(cmd *cobra.Command) (api.Client, *auth.Profile, error) {
 		return nil, nil, fmt.Errorf("profile %q: %w", activeName, err)
 	}
 
-	// P0: Workspace isolation check — prevent accidental cross-workspace operations.
+	// P0: Profile isolation check — prevent accidental cross-environment operations.
 	// Only enforced when --profile was NOT explicitly set (explicit = intent override).
 	if !explicitProfile {
 		if cwd, err := os.Getwd(); err == nil {
 			if projectRoot, err := config.FindProjectRoot(cwd); err == nil {
 				if cfg, err := config.Load(filepath.Join(projectRoot, config.ProjectFile)); err == nil {
-					if err := checkWorkspaceMatch(cfg, profile.Name); err != nil {
+					if err := checkProfileMatch(cfg, profile.Name); err != nil {
 						return nil, nil, err
 					}
 				}
@@ -72,14 +72,14 @@ func resolveAPIClient(cmd *cobra.Command) (api.Client, *auth.Profile, error) {
 	return client, profile, nil
 }
 
-// checkWorkspaceMatch returns an error if the project config specifies a workspace
+// checkProfileMatch returns an error if the project config specifies a profile
 // that doesn't match the active profile name.
-func checkWorkspaceMatch(cfg *config.Config, profileName string) error {
-	if cfg.Workspace != "" && cfg.Workspace != profileName {
+func checkProfileMatch(cfg *config.Config, profileName string) error {
+	if cfg.Profile != "" && cfg.Profile != profileName {
 		return fmt.Errorf(
-			"active profile %q does not match project workspace %q\n"+
+			"active profile %q does not match project profile %q\n"+
 				"Use --profile %s or run: wk auth switch %s",
-			profileName, cfg.Workspace, cfg.Workspace, cfg.Workspace,
+			profileName, cfg.Profile, cfg.Profile, cfg.Profile,
 		)
 	}
 	return nil

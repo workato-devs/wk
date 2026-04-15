@@ -11,8 +11,8 @@ func TestLoadAndSave(t *testing.T) {
 	path := filepath.Join(dir, "wk.toml")
 
 	cfg := &Config{
-		Name:      "test-project",
-		Workspace: "dev",
+		Name:    "test-project",
+		Profile: "dev",
 		Sync: []SyncEntry{
 			{ServerPath: "All projects/Test", LocalPath: "./recipes", Include: []string{"recipes"}},
 		},
@@ -30,8 +30,8 @@ func TestLoadAndSave(t *testing.T) {
 	if loaded.Name != cfg.Name {
 		t.Errorf("Name = %q, want %q", loaded.Name, cfg.Name)
 	}
-	if loaded.Workspace != cfg.Workspace {
-		t.Errorf("Workspace = %q, want %q", loaded.Workspace, cfg.Workspace)
+	if loaded.Profile != cfg.Profile {
+		t.Errorf("Profile = %q, want %q", loaded.Profile, cfg.Profile)
 	}
 	if len(loaded.Sync) != 1 {
 		t.Fatalf("Sync len = %d, want 1", len(loaded.Sync))
@@ -55,7 +55,7 @@ func TestFindProjectRoot(t *testing.T) {
 	}
 
 	// Create wk.toml in the root dir
-	cfg := &Config{Name: "test", Workspace: "dev"}
+	cfg := &Config{Name: "test", Profile: "dev"}
 	if err := Save(filepath.Join(dir, ProjectFile), cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -76,10 +76,10 @@ func TestValidate(t *testing.T) {
 		cfg     Config
 		wantErr bool
 	}{
-		{"valid", Config{Name: "test", Workspace: "dev"}, false},
-		{"missing name", Config{Workspace: "dev"}, true},
-		{"missing workspace", Config{Name: "test"}, true},
-		{"bad sync entry", Config{Name: "test", Workspace: "dev", Sync: []SyncEntry{{}}}, true},
+		{"valid", Config{Name: "test", Profile: "dev"}, false},
+		{"missing name", Config{Profile: "dev"}, true},
+		{"missing profile", Config{Name: "test"}, true},
+		{"bad sync entry", Config{Name: "test", Profile: "dev", Sync: []SyncEntry{{}}}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

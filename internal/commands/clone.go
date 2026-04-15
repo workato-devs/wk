@@ -13,8 +13,8 @@ import (
 
 func newCloneCmd() *cobra.Command {
 	var (
-		flagWorkspace string
-		flagLocalPath string
+		flagPathPrefix string
+		flagLocalPath  string
 	)
 
 	cmd := &cobra.Command{
@@ -43,8 +43,8 @@ func newCloneCmd() *cobra.Command {
 
 			// Build config
 			serverPath := folderName
-			if flagWorkspace != "" {
-				serverPath = flagWorkspace + "/" + folderName
+			if flagPathPrefix != "" {
+				serverPath = flagPathPrefix + "/" + folderName
 			}
 
 			cfg := &config.Config{
@@ -96,7 +96,7 @@ func newCloneCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&flagWorkspace, "workspace", "", "Workspace path prefix")
+	cmd.Flags().StringVar(&flagPathPrefix, "path-prefix", "", "Server-side path prefix for the folder")
 	cmd.Flags().StringVar(&flagLocalPath, "local-path", "", "Local directory to clone into (default: folder name)")
 
 	return cmd

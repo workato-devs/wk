@@ -7,11 +7,11 @@ import (
 	"github.com/workato-devs/wk-cli-beta/internal/config"
 )
 
-func TestCheckWorkspaceMatch_Mismatch(t *testing.T) {
-	cfg := &config.Config{Workspace: "prod"}
-	err := checkWorkspaceMatch(cfg, "dev")
+func TestCheckProfileMatch_Mismatch(t *testing.T) {
+	cfg := &config.Config{Profile: "prod"}
+	err := checkProfileMatch(cfg, "dev")
 	if err == nil {
-		t.Fatal("expected error for workspace mismatch")
+		t.Fatal("expected error for profile mismatch")
 	}
 	msg := err.Error()
 	if !strings.Contains(msg, `"dev"`) || !strings.Contains(msg, `"prod"`) {
@@ -22,18 +22,18 @@ func TestCheckWorkspaceMatch_Mismatch(t *testing.T) {
 	}
 }
 
-func TestCheckWorkspaceMatch_Match(t *testing.T) {
-	cfg := &config.Config{Workspace: "prod"}
-	err := checkWorkspaceMatch(cfg, "prod")
+func TestCheckProfileMatch_Match(t *testing.T) {
+	cfg := &config.Config{Profile: "prod"}
+	err := checkProfileMatch(cfg, "prod")
 	if err != nil {
-		t.Fatalf("unexpected error for matching workspace: %v", err)
+		t.Fatalf("unexpected error for matching profile: %v", err)
 	}
 }
 
-func TestCheckWorkspaceMatch_EmptyWorkspace(t *testing.T) {
-	cfg := &config.Config{Workspace: ""}
-	err := checkWorkspaceMatch(cfg, "anything")
+func TestCheckProfileMatch_EmptyProfile(t *testing.T) {
+	cfg := &config.Config{Profile: ""}
+	err := checkProfileMatch(cfg, "anything")
 	if err != nil {
-		t.Fatalf("unexpected error when workspace is empty: %v", err)
+		t.Fatalf("unexpected error when profile is empty: %v", err)
 	}
 }

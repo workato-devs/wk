@@ -9,7 +9,7 @@ var (
 	ErrProfileNotFound    = errors.New("auth profile not found")
 	ErrCredentialNotFound = errors.New("credential not found in store")
 	ErrTokenExpired       = errors.New("auth token has expired")
-	ErrProfileMismatch    = errors.New("active profile does not match project workspace")
+	ErrProfileMismatch    = errors.New("active profile does not match project's configured profile")
 
 	// Project errors
 	ErrNotInProject  = errors.New("not in a wk project directory (no wk.toml found)")
