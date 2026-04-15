@@ -17,7 +17,9 @@ func TestFolderService_List(t *testing.T) {
 			t.Errorf("parent_id = %q, want 10", pid)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]Folder{{ID: 1, Name: "child"}})
+		json.NewEncoder(w).Encode(map[string]any{
+				"result": []Folder{{ID: 1, Name: "child"}},
+			})
 	}))
 	defer srv.Close()
 

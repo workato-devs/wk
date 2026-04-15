@@ -28,7 +28,7 @@ func newPluginsInstallCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "install <path>",
 		Short: "Install a plugin from a local path",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "plugin path is required, e.g.: wk plugins install <path>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			source, err := filepath.Abs(args[0])
 			if err != nil {
@@ -101,7 +101,7 @@ func newPluginsRemoveCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "remove <name>",
 		Short: "Remove an installed plugin",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "plugin name is required, e.g.: wk plugins remove <name>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 

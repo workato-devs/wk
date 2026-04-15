@@ -94,7 +94,7 @@ func newRecipesGetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "get <id>",
 		Short: "Get recipe details",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "recipe ID is required, e.g.: wk recipes get <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -136,11 +136,12 @@ func newRecipesGetCmd() *cobra.Command {
 
 func newRecipesStartCmd() *cobra.Command {
 	var noWait bool
+	var pollTimeout int
 
 	cmd := &cobra.Command{
 		Use:   "start <id>",
 		Short: "Start a recipe",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "recipe ID is required, e.g.: wk recipes start <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
@@ -162,7 +163,11 @@ func newRecipesStartCmd() *cobra.Command {
 			}
 
 			// Poll to verify the recipe actually became active.
-			const timeout = 30 * time.Second
+			pt := pollTimeout
+			if pt > 600 {
+				pt = 600
+			}
+			timeout := time.Duration(pt) * time.Second
 			const interval = 2 * time.Second
 			deadline := time.Now().Add(timeout)
 
@@ -183,6 +188,7 @@ func newRecipesStartCmd() *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&noWait, "no-wait", false, "Do not wait for recipe to become active")
+	cmd.Flags().IntVar(&pollTimeout, "poll-timeout", 120, "Seconds to wait for recipe to become active (max 600)")
 	return cmd
 }
 
@@ -190,7 +196,7 @@ func newRecipesStopCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "stop <id>",
 		Short: "Stop a recipe",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "recipe ID is required, e.g.: wk recipes stop <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
@@ -218,7 +224,7 @@ func newRecipesExportCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "export <id>",
 		Short: "Export a recipe as JSON",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "recipe ID is required, e.g.: wk recipes export <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
@@ -258,7 +264,7 @@ func newRecipesImportCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "import <path>",
 		Short: "Import a recipe from JSON file",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "file path is required, e.g.: wk recipes import <path>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -305,7 +311,7 @@ func newRecipesJobsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "jobs <id>",
 		Short: "List recipe jobs",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "recipe ID is required, e.g.: wk recipes jobs <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -368,7 +374,7 @@ func newRecipesCopyCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "copy <id>",
 		Short: "Copy a recipe to a folder",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "recipe ID is required, e.g.: wk recipes copy <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -410,7 +416,7 @@ func newRecipesConnectCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update-connection <id>",
 		Short: "Update a recipe's connection",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "recipe ID is required, e.g.: wk recipes update-connection <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {

@@ -73,8 +73,8 @@ type Job struct {
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
-// ListResult is a generic wrapper for paginated API responses.
-// Used by recipes (which return {"items":[...]}) but not connections/folders (which return bare arrays).
+// ListResult is a generic wrapper for paginated API responses
+// that return {"items":[...]}, e.g. recipes and jobs.
 type ListResult[T any] struct {
 	Items []T `json:"items"`
 }
@@ -154,11 +154,15 @@ type WorkspaceUser struct {
 
 // AuditLogEntry represents a Workato audit log entry.
 type AuditLogEntry struct {
-	ID        int       `json:"id"`
-	EventType string    `json:"event_type"`
-	UserID    int       `json:"user_id"`
-	CreatedAt time.Time `json:"created_at"`
-	Details   any       `json:"details,omitempty"`
+	ID        int    `json:"id"`
+	EventType string `json:"event_type"`
+	Timestamp string `json:"timestamp"`
+	User      struct {
+		ID    int    `json:"id"`
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	} `json:"user"`
+	Details any `json:"details,omitempty"`
 }
 
 // AuditLogOptions configures audit log filtering.

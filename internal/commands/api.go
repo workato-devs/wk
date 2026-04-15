@@ -190,7 +190,7 @@ func newAPIEndpointsEnableCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "enable <id>",
 		Short: "Enable an API endpoint",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "endpoint ID is required, e.g.: wk api endpoints enable <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
@@ -216,7 +216,7 @@ func newAPIEndpointsDisableCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "disable <id>",
 		Short: "Disable an API endpoint",
-		Args:  cobra.ExactArgs(1),
+		Args:  requireArgs(1, "endpoint ID is required, e.g.: wk api endpoints disable <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {

@@ -10,7 +10,7 @@ func newConnectorsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "connectors",
 		Aliases: []string{"connector"},
-		Short:   "Manage Workato connectors",
+		Short:   "Manage custom SDK connectors (use 'wk connections' for workspace connections)",
 	}
 	cmd.AddCommand(newConnectorsListCmd())
 	return cmd
@@ -21,7 +21,7 @@ func newConnectorsListCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List connectors",
+		Short: "List custom SDK connectors",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -50,6 +50,6 @@ func newConnectorsListCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&search, "search", "", "Search connectors")
+	cmd.Flags().StringVar(&search, "search", "", "Search custom SDK connectors")
 	return cmd
 }
