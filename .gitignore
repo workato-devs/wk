@@ -15,6 +15,7 @@ plugins/example/example
 *.swp
 *.swo
 
-# Test artifacts
+# Test & Dev artifacts
 *.test
 coverage.out
+*.env
