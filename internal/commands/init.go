@@ -154,6 +154,17 @@ func newInitCmd() *cobra.Command {
 				}
 			}
 
+			// Validate that the named profile exists.
+			pm := auth.NewProfileManager()
+			if _, err := pm.GetProfile(profile); err != nil {
+				return fmt.Errorf("profile %q not found — run 'wk auth login' first", profile)
+			}
+
+			// Validate that the active profile matches the target profile.
+			if activeName, err := pm.GetActiveProfile(); err == nil && activeName != profile {
+				return fmt.Errorf("active profile %q does not match target profile %q", activeName, profile)
+			}
+
 			// Resolve the target directory: <cwd>/<name>/
 			targetDir := filepath.Join(cwd, name)
 			configPath := filepath.Join(targetDir, config.ProjectFile)

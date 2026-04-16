@@ -9,6 +9,29 @@ import (
 	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
 )
 
+// hasDuplicateTarget checks whether any existing profile (with a different
+// name) already targets the same (workspace, environment, region) tuple.
+// Profiles with empty workspace or environment are skipped (backward compat).
+func hasDuplicateTarget(profiles []*Profile, p *Profile) *Profile {
+	if p.Workspace == "" || p.Environment == "" {
+		return nil
+	}
+	for _, existing := range profiles {
+		if existing.Name == p.Name {
+			continue
+		}
+		if existing.Workspace == "" || existing.Environment == "" {
+			continue
+		}
+		if existing.Workspace == p.Workspace &&
+			existing.Environment == p.Environment &&
+			existing.Region == p.Region {
+			return existing
+		}
+	}
+	return nil
+}
+
 // ProfileManager handles reading and writing profile metadata on disk.
 type ProfileManager struct {
 	Dir string // defaults to ~/.wk/
@@ -54,11 +77,19 @@ func (pm *ProfileManager) saveProfiles(profiles []*Profile) error {
 }
 
 // SaveProfile adds or updates a profile in profiles.json.
+// Returns ErrDuplicateTarget if another profile already targets the same
+// (workspace, environment, region) tuple.
 func (pm *ProfileManager) SaveProfile(p *Profile) error {
 	profiles, err := pm.loadProfiles()
 	if err != nil {
 		return err
 	}
+
+	if dup := hasDuplicateTarget(profiles, p); dup != nil {
+		return fmt.Errorf("%w: profile %q already targets %s/%s (%s)",
+			wkerrors.ErrDuplicateTarget, dup.Name, dup.Workspace, dup.Environment, dup.Region)
+	}
+
 	found := false
 	for i, existing := range profiles {
 		if existing.Name == p.Name {
