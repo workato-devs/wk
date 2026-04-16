@@ -51,10 +51,12 @@ type Credential struct {
 // Profile represents a named authentication profile targeting a specific
 // workspace, environment, and region combination.
 type Profile struct {
-	Name       string     `json:"name"`
-	Region     Region     `json:"region"`
-	StoreType  StoreType  `json:"store_type"`
-	BaseURL    string     `json:"base_url"`
-	CreatedAt  time.Time  `json:"created_at"`
-	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	Name        string     `json:"name"`
+	Workspace   string     `json:"workspace"`
+	Environment string     `json:"environment"`
+	Region      Region     `json:"region"`
+	StoreType   StoreType  `json:"store_type"`
+	BaseURL     string     `json:"base_url"`
+	CreatedAt   time.Time  `json:"created_at"`
+	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
 }
