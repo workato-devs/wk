@@ -380,24 +380,24 @@ Considered introspecting environment from `GET /activity_logs.workspace.environm
 8. [x] Implement `wk auth delete <name>` command
 9. [x] Update `auth list` — add WORKSPACE, ENVIRONMENT columns (file store reading deferred to item 14)
 10. [x] Update `auth status` — show workspace/environment, warn when fields are empty (file store resolution deferred to item 14)
-11. [ ] Update `auth switch` to validate against both `profiles.json` and `profiles.env` (when in a project directory) — **blocked on file naming decision**
+11. [x] Update `auth switch` to validate against both `profiles.json` and `profiles.env` (when in a project directory)
 
-### Credential routing — blocked on file naming decision (`.env` vs `profiles.env`)
-12. [ ] Replace `ChainStore` usage in `resolveAPIClient` with StoreType-driven routing (Sub-decision 6 resolution flow)
-13. [ ] Remove `EnvStore` (process env var credential reader)
-14. [ ] Implement `FileStore` — reads `profiles.env`, parses multi-profile key=value format, looks up by `NAME=`
-15. [ ] Add `--store-type` as a global flag for explicit backend override
+### Credential routing
+12. [x] Replace `ChainStore` usage in `resolveAPIClient` with StoreType-driven routing (Sub-decision 6 resolution flow)
+13. [x] Remove `EnvStore` (process env var credential reader)
+14. [x] Implement `FileStore` — reads `profiles.env`, parses multi-profile key=value format, looks up by `NAME=`
+15. [x] Add `--store-type` as a global flag for explicit backend override
 
 ### Init validation (cohesive with ADR-005)
 16. [x] Add profile existence validation to `wk init`
 17. [x] Add active profile mismatch check to `wk init` (hard fail, name the mismatch)
-18. [ ] Add `--store-type` flag to `wk init` for file-store profile validation — **blocked on file naming decision**
-19. [ ] Warn and defer when `--store-type file` is specified but no `profiles.env` exists — **blocked on file naming decision**
+18. [x] Add `--store-type` flag to `wk init` for file-store profile validation
+19. [x] Warn and defer when `--store-type file` is specified but no `profiles.env` exists
 
 ### Documentation and cleanup
 20. [x] Update all help text, error messages, and prompts for terminology consistency
-21. [ ] Remove `WK_TOKEN`, `WK_REGION` env var references from code and documentation — **blocked on file naming decision** (removal tied to EnvStore replacement)
-22. [ ] Create `profiles.env.example` documenting the `profiles.env` format — **blocked on file naming decision**
+21. [x] Remove `WK_TOKEN`, `WK_REGION` env var references from code and documentation
+22. [x] Create `profiles.env.example` documenting the `profiles.env` format
 23. [x] Update all tests (for completed items; remaining tests ship with their respective items)
 
 ### Login introspection and flag resolution (April 17, 2026 revision)
@@ -413,6 +413,11 @@ Considered introspecting environment from `GET /activity_logs.workspace.environm
 31. [x] Update `wk init` to resolve and write the four new `wk.toml` fields at project creation (read from the resolved profile's record)
 32. [x] Update `auth login` command help text and project docs to describe the reduced flag surface, `/users/me` introspection, and the new `wk.toml` snapshot fields
 33. [x] Document the interactive vs. non-interactive mode asymmetry in CI setup docs
+
+### Post-beta-test alignment (surfaced during manual testing)
+36. [x] Align `wk init` non-interactive contract with `wk auth login`: detect non-interactive mode via `!isatty(stdin) && !--no-input && !--json` (previously `--json`-only), fail fast on missing required flags (`--name`, `--profile`) before any prompt label prints, and add a `--no-input` flag for explicit non-interactive mode.
+37. [x] Harden interactive detection to require BOTH stdin and stdout to be TTYs. Captured-output contexts (`wk auth login --token X > out.log`) now correctly route through the non-interactive fail-fast path instead of printing orphaned prompt labels.
+38. [x] Consolidate non-interactive missing-flag errors: one error listing all missing required flags instead of one per flag.
 
 ### Deferred to future revision
 34. [ ] File a Platform request for a `/session` or `/whoami` endpoint returning `{workspace, environment}` — unblocks environment introspection without the `/activity_logs` workaround

@@ -57,7 +57,10 @@ The CLI will:
 Subsequent commands (e.g. `wk pull`, `wk push`) resolve credentials by
 profile name as normal.
 
-## Example: GitHub Actions
+## Example: GitHub Actions — keychain flow
+
+This uses `wk auth login` to write into the runner's OS keychain. Simple,
+but creates per-run keychain state.
 
 ```yaml
 steps:
@@ -79,16 +82,45 @@ steps:
 `--no-input` is optional here since stdin already isn't a TTY, but it's a
 useful explicit marker in scripts that might run locally too.
 
+For the file-store flow (recommended for CI — no keychain, no login step),
+see the next section.
+
 ## Credential storage in CI
 
-The examples above use the default keychain store. Non-keychain backends
-(file-based, encrypted file, secrets manager) are tracked in
-[ADR-006](./ADR-006-profile-identity-model.md) and are not yet available
-in this beta.
+CI pipelines typically skip `wk auth login` entirely and generate a
+`profiles.env` from the pipeline's secrets manager instead. The file is
+CLI-read-only (the CLI never writes it), uses a `NAME=` record delimiter,
+and lives alongside `wk.toml` at the project root.
 
-When the file-store lands, CI pipelines will have the option to generate a
-`profiles.env` from the pipeline's secrets manager and skip the
-`auth login` step entirely — the profile schema is the same in both cases.
+### GitHub Actions example with `profiles.env`
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+
+  - name: Write profiles.env
+    env:
+      WORKATO_TOKEN: ${{ secrets.WORKATO_TOKEN }}
+    run: |
+      cat <<EOF > profiles.env
+      NAME=ci
+      WORKSPACE=acme-corp
+      ENVIRONMENT=prod
+      REGION=us
+      TOKEN=$WORKATO_TOKEN
+      EOF
+
+  - name: Pull recipes
+    run: wk pull --profile ci --store-type file
+```
+
+`--store-type file` routes explicitly to `profiles.env` and skips keychain
+lookup. `--profile ci` names the record. The committed `wk.toml` typically
+carries `profile = "ci"` so the two line up. See
+[`profiles.env.example`](../profiles.env.example) for the full format.
+
+**Important:** `profiles.env` holds secrets. Never commit it. The repo
+root `.gitignore` already excludes `*.env`.
 
 ## See also
 

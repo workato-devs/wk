@@ -53,11 +53,25 @@ requires --token and --environment explicitly. See ADR-006.`,
 			interactive := isInteractiveStdin() && !noInput && !flagJSON
 			reader := bufio.NewReader(os.Stdin)
 
-			// Step 1: token. Required before any API call.
-			if token == "" {
-				if !interactive {
-					return fmt.Errorf("--token is required in non-interactive mode")
+			// In non-interactive mode, validate every required flag upfront
+			// before any API call or prompt. This prevents prompt labels
+			// from ever reaching the terminal in batch contexts.
+			if !interactive {
+				var missing []string
+				if token == "" {
+					missing = append(missing, "--token")
 				}
+				if environment == "" {
+					missing = append(missing, "--environment")
+				}
+				if len(missing) > 0 {
+					return fmt.Errorf("%s required in non-interactive mode (detected via --json, --no-input, or non-TTY stdin)",
+						strings.Join(missing, " and "))
+				}
+			}
+
+			// Step 1: token. Prompt only in interactive mode.
+			if token == "" {
 				fmt.Print("API token: ")
 				line, _ := reader.ReadString('\n')
 				token = strings.TrimSpace(line)
@@ -97,17 +111,15 @@ requires --token and --environment explicitly. See ADR-006.`,
 			}
 			workspace = info.Name
 
-			// Step 4: environment.
+			// Step 4: environment. Only prompted in interactive mode;
+			// non-interactive mode was already validated upfront.
 			if environment == "" {
-				if !interactive {
-					return fmt.Errorf("--environment is required in non-interactive mode")
-				}
 				fmt.Print("Environment (e.g. dev, staging, prod): ")
 				line, _ := reader.ReadString('\n')
 				environment = strings.TrimSpace(line)
 			}
 			if environment == "" {
-				return fmt.Errorf("environment is required")
+				return fmt.Errorf("environment cannot be empty")
 			}
 
 			// Step 5: name. Auto-compute <workspace-slug>-<env>[-<region>]
@@ -193,9 +205,17 @@ requires --token and --environment explicitly. See ADR-006.`,
 	return cmd
 }
 
-// isInteractiveStdin reports whether stdin is attached to a terminal.
+// isInteractiveStdin reports whether the CLI can meaningfully prompt the
+// user — it requires BOTH stdin and stdout to be attached to a terminal.
+// Checking stdout too catches cases where output is captured to a file or
+// piped further, in which case prompt labels become noise (the user can't
+// read them inline with their own input).
 func isInteractiveStdin() bool {
-	fi, err := os.Stdin.Stat()
+	return isTerminal(os.Stdin) && isTerminal(os.Stdout)
+}
+
+func isTerminal(f *os.File) bool {
+	fi, err := f.Stat()
 	if err != nil {
 		return false
 	}
@@ -249,13 +269,17 @@ func newAuthStatusCmd() *cobra.Command {
 				return fmt.Errorf("no active profile: %w", err)
 			}
 
-			profile, err := pm.GetProfile(activeName)
-			if err != nil {
-				return fmt.Errorf("profile %q: %w", activeName, err)
+			profile, _, credErr := resolveProfileAndCred(cmd.Context(), activeName)
+			if profile == nil {
+				// Fall back to metadata-only read so status can still report
+				// which profile is configured even if the backend can't be
+				// reached.
+				p, perr := pm.GetProfile(activeName)
+				if perr != nil {
+					return fmt.Errorf("profile %q: %w", activeName, perr)
+				}
+				profile = p
 			}
-
-			store := auth.NewChainStore(&auth.EnvStore{}, &auth.KeyringStore{})
-			_, credErr := store.Get(cmd.Context(), activeName)
 
 			type statusInfo struct {
 				Profile     string `json:"profile"`
@@ -331,6 +355,21 @@ func newAuthSwitchCmd() *cobra.Command {
 			pm := auth.NewProfileManager()
 
 			if _, err := pm.GetProfile(name); err != nil {
+				// Keychain miss: check if the name exists in profiles.env to
+				// give a more useful error. File-store profiles are project-
+				// scoped and cannot be set as the global active profile.
+				if cwd, werr := os.Getwd(); werr == nil {
+					if root, rerr := config.FindProjectRoot(cwd); rerr == nil {
+						fs := auth.NewFileStore(root)
+						if fs.Exists() {
+							if _, fperr := fs.GetProfile(name); fperr == nil {
+								return fmt.Errorf(
+									"profile %q is a file-store profile; file-store profiles are resolved per-invocation via --profile %s --store-type file and cannot be set as the global active profile",
+									name, name)
+							}
+						}
+					}
+				}
 				return fmt.Errorf("profile %q not found", name)
 			}
 
@@ -361,28 +400,58 @@ func newAuthListCmd() *cobra.Command {
 			}
 
 			activeName, _ := pm.GetActiveProfile()
+			keychainNames := make(map[string]bool, len(profiles))
+			for _, p := range profiles {
+				keychainNames[p.Name] = true
+			}
 
 			headers := []string{"NAME", "WORKSPACE", "ENVIRONMENT", "REGION", "STORE", "ACTIVE"}
 			var rows [][]string
 			for _, p := range profiles {
-				active := ""
-				if p.Name == activeName {
-					active = "*"
+				rows = append(rows, profileRow(p, activeName == p.Name, false))
+			}
+
+			// Merge file-store profiles when inside a project with profiles.env.
+			if cwd, werr := os.Getwd(); werr == nil {
+				if root, rerr := config.FindProjectRoot(cwd); rerr == nil {
+					fs := auth.NewFileStore(root)
+					if fs.Exists() {
+						fileProfiles, ferr := fs.ListProfiles()
+						if ferr != nil {
+							fmt.Fprintf(os.Stderr, "Warning: could not read %s: %v\n", fs.Path, ferr)
+						}
+						for _, p := range fileProfiles {
+							rows = append(rows, profileRow(p, false, keychainNames[p.Name]))
+						}
+					}
 				}
-				ws := p.Workspace
-				if ws == "" {
-					ws = "(unset)"
-				}
-				env := p.Environment
-				if env == "" {
-					env = "(unset)"
-				}
-				rows = append(rows, []string{p.Name, ws, env, string(p.Region), string(p.StoreType), active})
 			}
 
 			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
 		},
 	}
+}
+
+// profileRow formats one auth-list row. When shadowed is true, the name is
+// annotated to show that keychain routing would shadow this file-store entry.
+func profileRow(p *auth.Profile, isActive, shadowed bool) []string {
+	active := ""
+	if isActive {
+		active = "*"
+	}
+	name := p.Name
+	if shadowed {
+		name += " (shadowed)"
+	}
+	ws := p.Workspace
+	if ws == "" {
+		ws = "(unset)"
+	}
+	env := p.Environment
+	if env == "" {
+		env = "(unset)"
+	}
+	return []string{name, ws, env, string(p.Region), string(p.StoreType), active}
 }
 
 func newAuthDeleteCmd() *cobra.Command {

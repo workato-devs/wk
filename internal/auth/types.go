@@ -34,7 +34,6 @@ type StoreType string
 
 const (
 	StoreKeychain StoreType = "keychain"
-	StoreEnv      StoreType = "env"
 	StoreFile     StoreType = "file"
 	StoreVault    StoreType = "vault"
 )
