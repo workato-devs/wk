@@ -97,7 +97,7 @@ func BuildRunContext(cmd *cobra.Command) (*RunContext, error) {
 	cwd, err := os.Getwd()
 	if err == nil {
 		if projectRoot, err := config.FindProjectRoot(cwd); err == nil {
-			cfg, err := config.Load(filepath.Join(projectRoot, config.ProjectFile))
+			cfg, err := config.Load(config.ProjectConfigPath(projectRoot))
 			if err == nil {
 				rctx.Config = cfg
 				rctx.ProjectRoot = projectRoot

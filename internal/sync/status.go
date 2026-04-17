@@ -43,10 +43,12 @@ func (e *SyncEngine) Status(entry config.SyncEntry) ([]AssetStatus, error) {
 	}
 
 	// Load all meta files to know what was previously synced.
-	metas, err := FindMetaFiles(localDir)
+	metas, err := FindMetaFiles(e.projectRoot, localDir)
 	if err != nil {
 		return nil, err
 	}
+
+	ignore := e.ignoreMatcher()
 
 	// Track which metas we've matched to an actual file.
 	matched := make(map[string]bool)
@@ -58,11 +60,21 @@ func (e *SyncEngine) Status(entry config.SyncEntry) ([]AssetStatus, error) {
 		if walkErr != nil {
 			return walkErr
 		}
+		projectRel, rerr := e.projectRel(path)
+		if rerr != nil {
+			return rerr
+		}
 		if fi.IsDir() {
+			// Skip the .wk/ tool directory (ADR-005 Decision 10).
+			if fi.Name() == config.ProjectDir {
+				return filepath.SkipDir
+			}
+			if ignore.ShouldSkip(projectRel, true) {
+				return filepath.SkipDir
+			}
 			return nil
 		}
-		// Skip meta sidecar files.
-		if IsMetaFile(fi.Name()) {
+		if ignore.ShouldSkip(projectRel, false) {
 			return nil
 		}
 
@@ -107,9 +119,17 @@ func (e *SyncEngine) Status(entry config.SyncEntry) ([]AssetStatus, error) {
 	}
 
 	// Any meta file with no corresponding asset file means deleted.
+	// Skip metas for paths the user has since ignored so the user doesn't
+	// see spurious "deleted" entries after adding a .wkignore rule.
 	for rel, meta := range metas {
 		if matched[rel] {
 			continue
+		}
+		assetAbs := filepath.Join(localDir, rel)
+		if projectRel, err := e.projectRel(assetAbs); err == nil {
+			if ignore.ShouldSkip(projectRel, false) {
+				continue
+			}
 		}
 		results = append(results, AssetStatus{
 			FilePath:   rel,

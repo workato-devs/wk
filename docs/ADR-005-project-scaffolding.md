@@ -1,7 +1,7 @@
 # ADR-005: Project Scaffolding — Container Folder, `.wk/` Directory, and Ignore Semantics
 
-**Status:** Proposed
-**Date:** March 26, 2026 (revised April 8, 2026)
+**Status:** Accepted
+**Date:** March 26, 2026 (revised April 8, 2026; implemented April 17, 2026)
 **Author:** Zayne Turner
 **Deciders:** DevRel Engineering
 **References:** ADR-001 (Foundational Architecture), ADR-002 (Sync Engine), Tester Feedback (Greenfield Project Setup)
@@ -289,15 +289,32 @@ This migration can be automated via a `wk migrate` command (see Action Items).
 
 ## Action Items
 
-1. [ ] Update `internal/config/config.go` — add `ProjectDir` constant (`.wk`), update `FindProjectRoot` to look for `.wk/wk.toml`
-2. [ ] Add `FolderID int` field to `SyncEntry` struct with `toml:"folder_id,omitempty"`
-3. [ ] Update `internal/commands/init.go` — create `.wk/` dir, write config inside, write `.gitignore`, add `--overwrite` flag, add interactive overwrite prompt, add nesting guard, default `local_path` to `"."`
-4. [ ] Update `internal/commands/clone.go` — same `.wk/` scaffolding, write `folder_id`, add nesting guard
-5. [ ] Update `internal/commands/link.go` — config path now under `.wk/`
-6. [ ] Update `internal/sync/helpers.go` — `resolveFolderID` fast path when `FolderID` is set on entry, write-through cache to config
-7. [ ] Implement `.wkignore` parser in new file `internal/sync/ignore.go` — gitignore-pattern matching with `Match(path) bool`
-8. [ ] Update `internal/sync/status.go`, `pull.go`, `push.go`, `diff.go` to respect `.wkignore` patterns
-9. [ ] Update `internal/sync/meta.go` — metadata path derivation to `.wk/<relative>/asset.meta.json`, remove co-located `.wk-meta.json` sidecar logic
-10. [ ] Update all tests (`config_test.go`, `init_test.go`, `meta_test.go`, `pull_test.go`, `helpers_test.go`)
-11. [ ] Update CLI help text for `wk init`, `wk clone`, `wk link`
-12. [ ] Implement `wk migrate` command for existing beta projects
+1. [x] Update `internal/config/config.go` — add `ProjectDir` constant (`.wk`), update `FindProjectRoot` to look for `.wk/wk.toml`
+2. [x] Add `FolderID int` field to `SyncEntry` struct with `toml:"folder_id,omitempty"`
+3. [x] Update `internal/commands/init.go` — create `.wk/` dir, write config inside, write `.gitignore`, add `--overwrite` flag, add interactive overwrite prompt, add nesting guard, default `local_path` to `"."`
+4. [x] Update `internal/commands/clone.go` — same `.wk/` scaffolding, write `folder_id` (via engine write-through), add nesting guard
+5. [x] Update `internal/commands/link.go` — config path now under `.wk/`
+6. [x] Update `internal/sync/helpers.go` — `folderIDForEntry` fast path when `FolderID` is set, write-through cache to config, invalidation + retry on API 404
+7. [x] Implement `.wkignore` parser in new file `internal/sync/ignore.go` — hand-rolled gitignore-subset matcher (no new dependency) covering `*`, `**`, trailing `/`, `!` negation, comments, blanks
+8. [x] Update `internal/sync/status.go`, `pull.go`, `push.go`, `diff.go` to respect `.wkignore` patterns and implicitly skip `.wk/`
+9. [x] Update `internal/sync/meta.go` — metadata path derivation to `<root>/.wk/<relative-asset-path>.meta.json`; removed co-located `.wk-meta.json` sidecar logic
+10. [x] Update all tests (`config_test.go`, `init_test.go`, `meta_test.go`, `status_test.go`, `helpers_test.go`, `auth_test.go`, `resolve_test.go`); added `ignore_test.go`, folder-ID cache tests, overwrite / `.gitignore` tests
+11. [x] Update CLI help text for `wk init`, `wk clone`, `wk link`
+12. [ ] ~~Implement `wk migrate` command for existing beta projects~~ — **Deferred.** CLI is in beta with no within-CLI backward-compat guarantees; developers re-init rather than migrate. Revisit if the beta cohort grows large enough that manual re-init becomes a burden.
+
+## Implementation Notes
+
+- **`.wkignore` matcher is hand-rolled**, not backed by a third-party gitignore library. The subset documented in Decision 10 is narrow enough that owning the matcher keeps our semantics stable and the dependency list minimal. Anything outside that subset (leading-slash anchoring beyond the default, re-inclusion after parent exclusion, character classes) is intentionally out of scope.
+- **Folder-ID cache invalidation.** The write-through cache writes the resolved ID back to `wk.toml` on first resolution. If a subsequent `Export` / `Import` / `fetchRemoteFiles` returns `ErrAPINotFound` and the call used a cached ID, the engine re-resolves via path, updates the cache, and retries once. Non-404 errors surface unchanged.
+- **Meta file naming.** Assets at `<root>/<rel-path>` have their metas at `<root>/.wk/<rel-path>.meta.json` (full asset filename preserved, `.meta.json` appended). This matches the migration spec in Decision 4 and avoids collisions between assets that share a stem.
+- **`profiles.env` placement.** Remains at the project root (not inside `.wk/`). ADR-005 is silent on this; ADR-006 treats `profiles.env` as team-shared configuration that is committed for CI use, so moving it under the gitignored `.wk/` would break that workflow.
+
+## Related: Issue #29 — `init` sync-entry ergonomics
+
+Issue #29 observes that `wk init`'s flag surface expresses at most one `[[sync]]` entry, which forces developers with multi-folder projects into hand-editing `wk.toml`. Two interactions with ADR-005 matter:
+
+1. **`--overwrite` data-loss footgun (addressed).** Decision 2 added `--overwrite` as a non-interactive escape hatch. The initial implementation rewrote `wk.toml` from the command-line flags alone, which would have silently discarded any hand-edited `[[sync]]` blocks — including the multi-entry workaround teams are using today. The command now **loads the existing config before overwrite and preserves its `Sync` entries**, appending any `--server-path` flag as a new entry (deduplicated on `ServerPath`+`LocalPath`). A stderr notice reports how many entries were preserved. Non-sync fields (`Name`, `Profile`, workspace/environment/email snapshots) still get replaced from flags — that's the intended scope of `--overwrite`.
+
+2. **Incremental sync management (deferred).** A proper `wk sync add` / `wk sync list` / `wk sync remove` subcommand tree is the right long-term home for multi-entry scaffolding, including per-entry `--verify`. Deferred from this ADR to a follow-up (tracked in issue #29). The folder-ID cache in Decision 9 composes cleanly with incremental adds — a new entry starts with `FolderID=0` and is resolved + cached on its first sync.
+
+Combined, these keep the current init surface simple while eliminating the destructive `--overwrite` semantics that would have made multi-entry hand-editing unsafe.

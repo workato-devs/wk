@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/workato-devs/wk-cli-beta/internal/config"
 )
 
 func TestComputeHash(t *testing.T) {
@@ -28,7 +30,7 @@ func TestComputeHash(t *testing.T) {
 
 func TestMetaReadWrite(t *testing.T) {
 	dir := t.TempDir()
-	metaPath := filepath.Join(dir, "test.recipe.json.wk-meta.json")
+	metaPath := filepath.Join(dir, "test.recipe.json.meta.json")
 
 	meta := &AssetMeta{
 		ServerPath:   "All projects/Test/recipe",
@@ -60,36 +62,65 @@ func TestMetaReadWrite(t *testing.T) {
 	}
 }
 
-func TestMetaFileName(t *testing.T) {
-	name := MetaFileName("my_recipe.recipe.json")
-	if name != "my_recipe.recipe.json.wk-meta.json" {
-		t.Errorf("MetaFileName = %q, want %q", name, "my_recipe.recipe.json.wk-meta.json")
+func TestMetaPath(t *testing.T) {
+	root := t.TempDir()
+	asset := filepath.Join(root, "recipes", "slack.recipe.json")
+	got, err := MetaPath(root, asset)
+	if err != nil {
+		t.Fatalf("MetaPath: %v", err)
+	}
+	want := filepath.Join(root, config.ProjectDir, "recipes", "slack.recipe.json.meta.json")
+	if got != want {
+		t.Errorf("MetaPath = %q, want %q", got, want)
+	}
+}
+
+func TestMetaPath_OutsideRoot(t *testing.T) {
+	root := t.TempDir()
+	other := t.TempDir()
+	asset := filepath.Join(other, "x.recipe.json")
+	if _, err := MetaPath(root, asset); err == nil {
+		t.Error("expected error for asset outside project root")
 	}
 }
 
 func TestFindMetaFiles(t *testing.T) {
-	dir := t.TempDir()
+	projectRoot := t.TempDir()
+	localDir := projectRoot // LocalPath "."
 
-	// Create an asset file and its meta
-	assetPath := filepath.Join(dir, "recipe.json")
-	os.WriteFile(assetPath, []byte(`{"name":"test"}`), 0644)
+	// Create an asset file at project root.
+	assetAbs := filepath.Join(projectRoot, "recipe.json")
+	os.WriteFile(assetAbs, []byte(`{"name":"test"}`), 0644)
 
+	// Write its meta under .wk/.
+	metaPath, err := MetaPath(projectRoot, assetAbs)
+	if err != nil {
+		t.Fatalf("MetaPath: %v", err)
+	}
 	meta := &AssetMeta{
 		ServerPath:  "All projects/Test",
 		ContentHash: ComputeHash([]byte(`{"name":"test"}`)),
 	}
-	WriteMeta(filepath.Join(dir, "recipe.json.wk-meta.json"), meta)
+	if err := WriteMeta(metaPath, meta); err != nil {
+		t.Fatalf("WriteMeta: %v", err)
+	}
 
-	metas, err := FindMetaFiles(dir)
+	metas, err := FindMetaFiles(projectRoot, localDir)
 	if err != nil {
 		t.Fatalf("FindMetaFiles: %v", err)
 	}
-
 	if len(metas) != 1 {
 		t.Fatalf("found %d metas, want 1", len(metas))
 	}
-
 	if _, ok := metas["recipe.json"]; !ok {
-		t.Error("expected meta for recipe.json")
+		t.Errorf("expected meta keyed by \"recipe.json\", got keys: %v", keys(metas))
 	}
+}
+
+func keys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }

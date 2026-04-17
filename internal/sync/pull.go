@@ -43,14 +43,20 @@ func (e *SyncEngine) Pull(entry config.SyncEntry, force bool) ([]PullResult, err
 		}
 	}
 
-	// Resolve folder ID.
-	folderID, err := e.resolveFolderID(ctx, entry.ServerPath)
+	// Resolve folder ID (cached when possible, ADR-005 Decision 9).
+	folderID, err := e.folderIDForEntry(ctx, entry)
 	if err != nil {
 		return nil, fmt.Errorf("resolving folder %q: %w", entry.ServerPath, err)
 	}
 
-	// Trigger export.
+	// Trigger export; invalidate cache and retry once on 404.
 	pkgID, err := e.packages.Export(ctx, folderID)
+	if err != nil && entry.FolderID != 0 && invalidFolderCacheErr(err) {
+		if fresh, rerr := e.resolveAndCache(ctx, entry.ServerPath); rerr == nil {
+			folderID = fresh
+			pkgID, err = e.packages.Export(ctx, folderID)
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("starting export: %w", err)
 	}
@@ -82,6 +88,8 @@ func (e *SyncEngine) extractZip(zipData []byte, localDir string, serverPath stri
 		return nil, fmt.Errorf("creating directory %s: %w", localDir, err)
 	}
 
+	ignore := e.ignoreMatcher()
+
 	var results []PullResult
 
 	for _, f := range r.File {
@@ -103,6 +111,15 @@ func (e *SyncEngine) extractZip(zipData []byte, localDir string, serverPath stri
 		relPath := filepath.ToSlash(f.Name)
 		relPath = strings.TrimPrefix(relPath, "/")
 
+		// Consult .wkignore using the project-root-relative path.
+		absPath := filepath.Join(localDir, filepath.FromSlash(relPath))
+		if projectRel, rerr := e.projectRel(absPath); rerr == nil {
+			if ignore.ShouldSkip(projectRel, false) {
+				results = append(results, PullResult{FilePath: relPath, Action: "skipped"})
+				continue
+			}
+		}
+
 		// Normalize JSON to prevent phantom diffs from server-side reformatting.
 		if isJSON(relPath) {
 			if normalized, err := normalizeJSON(data); err == nil {
@@ -110,7 +127,6 @@ func (e *SyncEngine) extractZip(zipData []byte, localDir string, serverPath stri
 			}
 		}
 
-		absPath := filepath.Join(localDir, filepath.FromSlash(relPath))
 		newHash := ComputeHash(data)
 
 		// Determine action.
@@ -133,7 +149,7 @@ func (e *SyncEngine) extractZip(zipData []byte, localDir string, serverPath stri
 			}
 		}
 
-		// Write/update sidecar meta.
+		// Write/update sidecar meta under .wk/.
 		meta := &AssetMeta{
 			ServerPath:   serverPath + "/" + relPath,
 			ZipName:      f.Name,
@@ -142,7 +158,10 @@ func (e *SyncEngine) extractZip(zipData []byte, localDir string, serverPath stri
 			ContentHash:  newHash,
 			LastPulledAt: time.Now().UTC(),
 		}
-		metaPath := MetaFileName(absPath)
+		metaPath, err := MetaPath(e.projectRoot, absPath)
+		if err != nil {
+			return nil, fmt.Errorf("meta path for %s: %w", relPath, err)
+		}
 		if err := WriteMeta(metaPath, meta); err != nil {
 			return nil, fmt.Errorf("writing meta for %s: %w", relPath, err)
 		}

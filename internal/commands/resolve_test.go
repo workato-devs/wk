@@ -82,11 +82,14 @@ func writeKeychainProfile(t *testing.T, p *auth.Profile) {
 	}
 }
 
-// writeProjectFileStore creates wk.toml + profiles.env at cwd for a named
-// profile.
+// writeProjectFileStore creates .wk/wk.toml + profiles.env at cwd for a
+// named profile.
 func writeProjectFileStore(t *testing.T, cwd, name, token string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(cwd, config.ProjectFile),
+	if err := os.MkdirAll(filepath.Join(cwd, config.ProjectDir), 0755); err != nil {
+		t.Fatalf("creating .wk/: %v", err)
+	}
+	if err := os.WriteFile(config.ProjectConfigPath(cwd),
 		[]byte(`name = "test"`+"\n"), 0644); err != nil {
 		t.Fatalf("writing wk.toml: %v", err)
 	}
@@ -129,8 +132,9 @@ func TestResolveProfileAndCred_FileStoreExplicit(t *testing.T) {
 func TestResolveProfileAndCred_FileStoreMissingFile(t *testing.T) {
 	resetGlobalFlags(t)
 	cwd := setupIsolatedHome(t)
-	// Create wk.toml but NO profiles.env.
-	os.WriteFile(filepath.Join(cwd, config.ProjectFile), []byte(`name = "test"`), 0644)
+	// Create .wk/wk.toml but NO profiles.env.
+	os.MkdirAll(filepath.Join(cwd, config.ProjectDir), 0755)
+	os.WriteFile(config.ProjectConfigPath(cwd), []byte(`name = "test"`), 0644)
 	flagStoreType = string(auth.StoreFile)
 
 	_, _, err := resolveProfileAndCred(context.Background(), "ci")

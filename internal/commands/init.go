@@ -93,16 +93,25 @@ func newInitCmd() *cobra.Command {
 		flagLocalPath   string
 		flagVerify      bool
 		flagInitNoInput bool
+		flagOverwrite   bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize a new wk project",
-		Long: `Create a new wk project directory with a wk.toml config file.
+		Long: `Create a new wk project container in the current directory.
+
+The layout is:
+
+    <cwd>/<name>/
+    ├── .wk/
+    │   └── wk.toml        (project config; gitignored via /.wk/)
+    ├── .gitignore         (with /.wk/ appended)
+    └── ...                (asset directories populated by pull/clone)
 
 Non-interactive mode (detected via --json, --no-input, or a non-TTY stdin)
-requires --name and --profile explicitly. Mirrors the contract used by
-'wk auth login'.`,
+requires --name and --profile explicitly, and requires --overwrite when
+replacing an existing project. Mirrors the contract used by 'wk auth login'.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
@@ -159,8 +168,9 @@ requires --name and --profile explicitly. Mirrors the contract used by
 			}
 
 			// Resolve the target directory: <cwd>/<name>/
+			// Config lives at <target>/.wk/wk.toml per ADR-005 Decision 1.
 			targetDir := filepath.Join(cwd, name)
-			configPath := filepath.Join(targetDir, config.ProjectFile)
+			configPath := config.ProjectConfigPath(targetDir)
 
 			// Validate profile according to --store-type. File-store profiles
 			// live in the target directory's profiles.env; keychain profiles
@@ -202,13 +212,38 @@ requires --name and --profile explicitly. Mirrors the contract used by
 					flagStoreType, auth.StoreKeychain, auth.StoreFile)
 			}
 
-			// Check if target already contains a wk.toml.
+			// Check if target already contains a .wk/wk.toml. ADR-005 Decision 2:
+			// interactive prompts for overwrite; non-interactive requires --overwrite.
+			var existingCfg *config.Config
 			if _, err := os.Stat(configPath); err == nil {
-				return fmt.Errorf("project %q already exists at %s", name, targetDir)
+				if !flagOverwrite {
+					if !interactive {
+						return fmt.Errorf("project %q already exists at %s (use --overwrite to replace)", name, targetDir)
+					}
+					reader := bufio.NewReader(os.Stdin)
+					fmt.Fprintf(cmd.OutOrStdout(), "Project config already exists at %s. Overwrite? [y/N]: ", configPath)
+					answer, _ := reader.ReadString('\n')
+					answer = strings.ToLower(strings.TrimSpace(answer))
+					if answer != "y" && answer != "yes" {
+						return fmt.Errorf("aborted: existing project at %s not overwritten", configPath)
+					}
+				}
+				// Load the existing config so we can preserve [[sync]] entries
+				// across overwrite — init's flags can express at most one entry,
+				// and silently discarding multi-entry configs is a data-loss
+				// footgun (issue #29). See ADR-005 "Related: Issue #29".
+				if cfg, lerr := config.Load(configPath); lerr == nil {
+					existingCfg = cfg
+				} else {
+					fmt.Fprintf(os.Stderr,
+						"warning: could not parse existing %s; overwriting from scratch: %v\n",
+						configPath, lerr)
+				}
 			}
 
-			// Create the container directory (no-op if it already exists).
-			if err := os.MkdirAll(targetDir, 0755); err != nil {
+			// Create the container directory and .wk/ subdirectory.
+			// Decision 2 steps 4–6: scaffold into existing dir or create fresh.
+			if err := os.MkdirAll(filepath.Join(targetDir, config.ProjectDir), 0755); err != nil {
 				return fmt.Errorf("creating project directory: %w", err)
 			}
 
@@ -229,6 +264,19 @@ requires --name and --profile explicitly. Mirrors the contract used by
 				cfg.Email = resolvedProfile.Email
 			}
 
+			// Preserve existing sync entries when overwriting. Without this,
+			// a developer who hand-edited extra [[sync]] blocks (the current
+			// workaround for the single-entry limitation in issue #29) would
+			// silently lose them on --overwrite.
+			if existingCfg != nil && len(existingCfg.Sync) > 0 {
+				cfg.Sync = append(cfg.Sync, existingCfg.Sync...)
+				if !flagJSON {
+					fmt.Fprintf(os.Stderr,
+						"Preserved %d existing [[sync]] entr%s from %s\n",
+						len(existingCfg.Sync), pluralY(len(existingCfg.Sync)), configPath)
+				}
+			}
+
 			if flagServerPath != "" {
 				localPath := flagLocalPath
 				if localPath == "" {
@@ -245,16 +293,31 @@ requires --name and --profile explicitly. Mirrors the contract used by
 					}
 				}
 
-				cfg.Sync = []config.SyncEntry{
-					{
-						ServerPath: flagServerPath,
-						LocalPath:  localPath,
-					},
+				// Append unless an identical entry already exists (e.g., when
+				// re-running init with the same --server-path for idempotency).
+				newEntry := config.SyncEntry{
+					ServerPath: flagServerPath,
+					LocalPath:  localPath,
+				}
+				duplicate := false
+				for _, existing := range cfg.Sync {
+					if existing.ServerPath == newEntry.ServerPath && existing.LocalPath == newEntry.LocalPath {
+						duplicate = true
+						break
+					}
+				}
+				if !duplicate {
+					cfg.Sync = append(cfg.Sync, newEntry)
 				}
 			}
 
 			if err := config.Save(configPath, cfg); err != nil {
 				return fmt.Errorf("saving config: %w", err)
+			}
+
+			// Append /.wk/ to .gitignore (idempotent). ADR-005 Decision 8.
+			if err := ensureGitignoreEntry(targetDir); err != nil {
+				return fmt.Errorf("updating .gitignore: %w", err)
 			}
 
 			result := map[string]string{
@@ -279,6 +342,48 @@ requires --name and --profile explicitly. Mirrors the contract used by
 	cmd.Flags().StringVar(&flagLocalPath, "local-path", "", "Initial sync local path (defaults to \".\")")
 	cmd.Flags().BoolVar(&flagVerify, "verify", false, "Validate server-path exists on Workato before saving")
 	cmd.Flags().BoolVar(&flagInitNoInput, "no-input", false, "Force non-interactive mode (fail on missing required flags instead of prompting)")
+	cmd.Flags().BoolVar(&flagOverwrite, "overwrite", false, "Overwrite an existing project config without prompting (non-interactive mode)")
 
 	return cmd
+}
+
+// pluralY returns "y" when n == 1 and "ies" otherwise, for grammatical
+// messages like "1 entry" / "3 entries".
+func pluralY(n int) string {
+	if n == 1 {
+		return "y"
+	}
+	return "ies"
+}
+
+// ensureGitignoreEntry appends "/.wk/" to <projectRoot>/.gitignore if not
+// already present. Creates the file if missing. ADR-005 Decision 8.
+func ensureGitignoreEntry(projectRoot string) error {
+	path := filepath.Join(projectRoot, ".gitignore")
+	const entry = "/.wk/"
+
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	// Scan existing lines for a literal match (also accept bare ".wk/" or ".wk").
+	for _, line := range strings.Split(string(existing), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == entry || trimmed == ".wk/" || trimmed == ".wk" {
+			return nil
+		}
+	}
+
+	var buf strings.Builder
+	if len(existing) > 0 {
+		buf.Write(existing)
+		if !strings.HasSuffix(string(existing), "\n") {
+			buf.WriteByte('\n')
+		}
+		buf.WriteByte('\n')
+	}
+	buf.WriteString("# wk CLI — tool-managed directory\n")
+	buf.WriteString(entry + "\n")
+	return os.WriteFile(path, []byte(buf.String()), 0644)
 }

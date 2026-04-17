@@ -9,9 +9,15 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/workato-devs/wk-cli-beta/internal/config"
 )
 
-// AssetMeta is the sidecar metadata stored alongside each synced asset.
+// AssetMeta is the sidecar metadata stored for each synced asset.
+//
+// Per ADR-005 Decision 1, metas live under the project's .wk/ mirror
+// tree — the asset at <root>/<rel> has its meta at
+// <root>/.wk/<rel>.meta.json. Meta files never sit next to assets.
 type AssetMeta struct {
 	ServerPath   string    `json:"server_path"`
 	ZipName      string    `json:"zip_name"`
@@ -22,25 +28,26 @@ type AssetMeta struct {
 	LastPulledAt time.Time `json:"last_pulled_at"`
 }
 
-const metaSuffix = ".wk-meta.json"
+// metaSuffix is appended to the asset's relative path to form the meta
+// filename inside .wk/. Example: recipes/slack.recipe.json ->
+// .wk/recipes/slack.recipe.json.meta.json.
+const metaSuffix = ".meta.json"
 
-// MetaFileName returns the .wk-meta.json filename for an asset file.
-// e.g., "my_recipe.recipe.json" -> "my_recipe.recipe.json.wk-meta.json"
-func MetaFileName(assetPath string) string {
-	return assetPath + metaSuffix
+// MetaPath returns the canonical meta path for an asset located at
+// assetAbs within the project rooted at projectRoot. The meta lives
+// inside projectRoot/.wk/ mirroring the asset's relative position.
+func MetaPath(projectRoot, assetAbs string) (string, error) {
+	rel, err := filepath.Rel(projectRoot, assetAbs)
+	if err != nil {
+		return "", fmt.Errorf("computing rel path for %s: %w", assetAbs, err)
+	}
+	if strings.HasPrefix(rel, "..") {
+		return "", fmt.Errorf("asset %s is outside project root %s", assetAbs, projectRoot)
+	}
+	return filepath.Join(projectRoot, config.ProjectDir, rel+metaSuffix), nil
 }
 
-// IsMetaFile reports whether a filename is a .wk-meta.json sidecar file.
-func IsMetaFile(name string) bool {
-	return strings.HasSuffix(name, metaSuffix)
-}
-
-// AssetForMeta returns the asset filename that a meta file describes.
-func AssetForMeta(metaPath string) string {
-	return strings.TrimSuffix(metaPath, metaSuffix)
-}
-
-// ReadMeta reads and unmarshals a .wk-meta.json file.
+// ReadMeta reads and unmarshals a meta file at the given path.
 func ReadMeta(metaPath string) (*AssetMeta, error) {
 	data, err := os.ReadFile(metaPath)
 	if err != nil {
@@ -53,8 +60,12 @@ func ReadMeta(metaPath string) (*AssetMeta, error) {
 	return &meta, nil
 }
 
-// WriteMeta marshals and writes a .wk-meta.json file.
+// WriteMeta marshals and writes a meta file, creating parent directories
+// under .wk/ as needed.
 func WriteMeta(metaPath string, meta *AssetMeta) error {
+	if err := os.MkdirAll(filepath.Dir(metaPath), 0755); err != nil {
+		return fmt.Errorf("creating meta dir for %s: %w", metaPath, err)
+	}
 	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encoding meta: %w", err)
@@ -69,38 +80,60 @@ func ComputeHash(data []byte) string {
 	return hex.EncodeToString(h[:])
 }
 
-// FindMetaFiles scans a directory for .wk-meta.json files and returns a map
-// of asset filename (relative to dir) to its parsed AssetMeta.
-func FindMetaFiles(dir string) (map[string]*AssetMeta, error) {
+// FindMetaFiles scans the .wk/ mirror tree for metas describing assets
+// whose asset path is under localDir. Keys in the returned map are asset
+// paths relative to localDir, so callers can compare them directly
+// against filepath.Walk rel-paths of the asset tree.
+func FindMetaFiles(projectRoot, localDir string) (map[string]*AssetMeta, error) {
 	result := make(map[string]*AssetMeta)
 
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	// The meta subtree corresponding to localDir lives at
+	// <projectRoot>/.wk/<rel-of-localDir>/.
+	localRel, err := filepath.Rel(projectRoot, localDir)
+	if err != nil {
+		return nil, fmt.Errorf("computing rel path for %s: %w", localDir, err)
+	}
+	metaRoot := filepath.Join(projectRoot, config.ProjectDir, localRel)
+
+	info, err := os.Stat(metaRoot)
+	if os.IsNotExist(err) {
+		return result, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("stat %s: %w", metaRoot, err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("%s is not a directory", metaRoot)
+	}
+
+	err = filepath.Walk(metaRoot, func(path string, fi os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
-		if info.IsDir() {
+		if fi.IsDir() {
 			return nil
 		}
-		if !IsMetaFile(info.Name()) {
+		if !strings.HasSuffix(fi.Name(), metaSuffix) {
 			return nil
 		}
 
 		meta, err := ReadMeta(path)
 		if err != nil {
-			return fmt.Errorf("reading meta %s: %w", path, err)
+			return err
 		}
 
-		// The asset file is the meta path minus the suffix.
-		assetPath := AssetForMeta(path)
-		rel, err := filepath.Rel(dir, assetPath)
+		// Recover the asset path relative to localDir by stripping
+		// metaRoot prefix and the metaSuffix.
+		relMeta, err := filepath.Rel(metaRoot, path)
 		if err != nil {
 			return err
 		}
-		result[rel] = meta
+		assetRel := strings.TrimSuffix(relMeta, metaSuffix)
+		result[assetRel] = meta
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("scanning %s for meta files: %w", dir, err)
+		return nil, fmt.Errorf("scanning %s for meta files: %w", metaRoot, err)
 	}
 	return result, nil
 }

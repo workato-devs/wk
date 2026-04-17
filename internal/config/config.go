@@ -11,6 +11,17 @@ import (
 // ProjectFile is the name of the project configuration file.
 const ProjectFile = "wk.toml"
 
+// ProjectDir is the tool-managed directory at the project root that
+// contains wk.toml and all sidecar metadata. Fully gitignored per
+// ADR-005 Decision 8.
+const ProjectDir = ".wk"
+
+// ProjectConfigPath joins projectRoot with the canonical wk.toml location
+// inside .wk/. Use this everywhere instead of filepath.Join(root, ProjectFile).
+func ProjectConfigPath(projectRoot string) string {
+	return filepath.Join(projectRoot, ProjectDir, ProjectFile)
+}
+
 // Config represents the contents of a wk.toml project file.
 //
 // Workspace, WorkspaceID, Environment, and Email are an informational
@@ -37,9 +48,15 @@ type MCPConfig struct {
 }
 
 // SyncEntry maps a Workato server-side path to a local directory.
+//
+// FolderID caches the resolved Workato folder ID for ServerPath. When
+// non-zero, sync operations skip the folder-hierarchy API walk. The
+// sync engine populates it on first resolution (write-through cache)
+// and invalidates + re-resolves on API 404. See ADR-005 Decision 9.
 type SyncEntry struct {
 	ServerPath string   `toml:"server_path"`
 	LocalPath  string   `toml:"local_path"`
+	FolderID   int      `toml:"folder_id,omitempty"`
 	Include    []string `toml:"include,omitempty"`
 }
 
@@ -65,18 +82,19 @@ func Save(path string, cfg *Config) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// FindProjectRoot walks up from startDir looking for a wk.toml file.
-// Returns the directory containing wk.toml, or an error if none is found.
+// FindProjectRoot walks up from startDir looking for a .wk/wk.toml file.
+// Returns the directory containing .wk/ (the project root, not .wk/ itself),
+// or an error if none is found. See ADR-005 Decision 5.
 func FindProjectRoot(startDir string) (string, error) {
 	dir := startDir
 	for {
-		configPath := filepath.Join(dir, ProjectFile)
+		configPath := filepath.Join(dir, ProjectDir, ProjectFile)
 		if _, err := os.Stat(configPath); err == nil {
 			return dir, nil
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", fmt.Errorf("no %s found in %s or any parent directory", ProjectFile, startDir)
+			return "", fmt.Errorf("no %s/%s found in %s or any parent directory", ProjectDir, ProjectFile, startDir)
 		}
 		dir = parent
 	}

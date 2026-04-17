@@ -2,9 +2,12 @@ package sync
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/workato-devs/wk-cli-beta/internal/api"
+	"github.com/workato-devs/wk-cli-beta/internal/config"
 )
 
 type mockFolderService struct {
@@ -35,6 +38,72 @@ func newTestEngine(folders map[int][]api.Folder) *SyncEngine {
 	return &SyncEngine{
 		folders: &mockFolderService{folders: folders},
 	}
+}
+
+// TestFolderIDForEntry_UsesCache verifies the fast-path: when FolderID is
+// set on the entry, no folder-service call happens.
+func TestFolderIDForEntry_UsesCache(t *testing.T) {
+	// Empty folder service — a path resolution would error.
+	engine := newTestEngine(map[int][]api.Folder{})
+	entry := config.SyncEntry{ServerPath: "A", FolderID: 42}
+
+	id, err := engine.folderIDForEntry(context.Background(), entry)
+	if err != nil {
+		t.Fatalf("folderIDForEntry: %v", err)
+	}
+	if id != 42 {
+		t.Errorf("id = %d, want cached 42", id)
+	}
+}
+
+// TestFolderIDForEntry_WriteThrough verifies that a cache miss triggers
+// resolution and persists the resulting ID back to wk.toml.
+func TestFolderIDForEntry_WriteThrough(t *testing.T) {
+	root := t.TempDir()
+	// Pre-create .wk/ and write a config with one entry and no FolderID.
+	if err := writeConfigForTest(root, &config.Config{
+		Name: "t",
+		Sync: []config.SyncEntry{{ServerPath: "MyProject"}},
+	}); err != nil {
+		t.Fatalf("writeConfig: %v", err)
+	}
+
+	cfg, err := config.Load(config.ProjectConfigPath(root))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	engine := &SyncEngine{
+		projectRoot: root,
+		config:      cfg,
+		folders: &mockFolderService{folders: map[int][]api.Folder{
+			-1: {{ID: 100, Name: "MyProject"}},
+		}},
+	}
+
+	id, err := engine.folderIDForEntry(context.Background(), cfg.Sync[0])
+	if err != nil {
+		t.Fatalf("folderIDForEntry: %v", err)
+	}
+	if id != 100 {
+		t.Errorf("id = %d, want 100", id)
+	}
+
+	// Reload from disk; the FolderID should have been persisted.
+	reloaded, err := config.Load(config.ProjectConfigPath(root))
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if reloaded.Sync[0].FolderID != 100 {
+		t.Errorf("persisted FolderID = %d, want 100", reloaded.Sync[0].FolderID)
+	}
+}
+
+func writeConfigForTest(root string, cfg *config.Config) error {
+	if err := os.MkdirAll(filepath.Join(root, config.ProjectDir), 0755); err != nil {
+		return err
+	}
+	return config.Save(config.ProjectConfigPath(root), cfg)
 }
 
 func TestResolveFolderID(t *testing.T) {

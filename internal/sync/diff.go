@@ -37,28 +37,46 @@ func (e *SyncEngine) Diff(entry config.SyncEntry) ([]DiffEntry, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	// Resolve folder ID from the server path.
-	folderID, err := e.resolveFolderID(ctx, entry.ServerPath)
+	// Resolve folder ID (cached when possible, ADR-005 Decision 9).
+	folderID, err := e.folderIDForEntry(ctx, entry)
 	if err != nil {
 		return nil, fmt.Errorf("resolving folder %q: %w", entry.ServerPath, err)
 	}
 
-	// Trigger an export and wait for it to complete.
+	// Fetch remote; invalidate cache and retry once on 404.
 	remoteFiles, err := e.fetchRemoteFiles(ctx, folderID)
+	if err != nil && entry.FolderID != 0 && invalidFolderCacheErr(err) {
+		if fresh, rerr := e.resolveAndCache(ctx, entry.ServerPath); rerr == nil {
+			folderID = fresh
+			remoteFiles, err = e.fetchRemoteFiles(ctx, folderID)
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("fetching remote files: %w", err)
 	}
 
 	// Build map of local files with their hashes.
 	localDir := filepath.Join(e.projectRoot, entry.LocalPath)
-	localMetas, err := FindMetaFiles(localDir)
+	localMetas, err := FindMetaFiles(e.projectRoot, localDir)
 	if err != nil {
 		return nil, err
+	}
+
+	ignore := e.ignoreMatcher()
+	skip := func(rel string) bool {
+		projectRel, err := e.projectRel(filepath.Join(localDir, rel))
+		if err != nil {
+			return false
+		}
+		return ignore.ShouldSkip(projectRel, false)
 	}
 
 	// Also read current local file hashes for known assets.
 	localHashes := make(map[string]string)
 	for rel := range localMetas {
+		if skip(rel) {
+			continue
+		}
 		absPath := filepath.Join(localDir, rel)
 		data, err := readFileBytes(absPath)
 		if err != nil {
@@ -74,6 +92,9 @@ func (e *SyncEngine) Diff(entry config.SyncEntry) ([]DiffEntry, error) {
 	}
 	for _, rel := range localOnly {
 		if _, hasMeta := localMetas[rel]; hasMeta {
+			continue
+		}
+		if skip(rel) {
 			continue
 		}
 		data, err := readFileBytes(filepath.Join(localDir, rel))

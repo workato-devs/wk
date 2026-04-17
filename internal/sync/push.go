@@ -77,15 +77,21 @@ func (e *SyncEngine) Push(entry config.SyncEntry, dryRun bool, preserveState boo
 		return nil, fmt.Errorf("building zip: %w", err)
 	}
 
-	// Resolve folder ID.
-	folderID, err := e.resolveFolderID(ctx, entry.ServerPath)
+	// Resolve folder ID (cached when possible, ADR-005 Decision 9).
+	folderID, err := e.folderIDForEntry(ctx, entry)
 	if err != nil {
 		return nil, fmt.Errorf("resolving folder %q: %w", entry.ServerPath, err)
 	}
 
-	// Upload.
+	// Upload; invalidate cache and retry once on 404.
 	restartRecipes := preserveState
 	importID, err := e.packages.Import(ctx, folderID, zipData, restartRecipes)
+	if err != nil && entry.FolderID != 0 && invalidFolderCacheErr(err) {
+		if fresh, rerr := e.resolveAndCache(ctx, entry.ServerPath); rerr == nil {
+			folderID = fresh
+			importID, err = e.packages.Import(ctx, folderID, zipData, restartRecipes)
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("uploading package: %w", err)
 	}
@@ -95,14 +101,17 @@ func (e *SyncEngine) Push(entry config.SyncEntry, dryRun bool, preserveState boo
 		return nil, err
 	}
 
-	// Update meta files for pushed assets.
+	// Update meta files for pushed assets (under .wk/).
 	for _, s := range toPush {
 		absPath := filepath.Join(localDir, s.FilePath)
 		data, err := os.ReadFile(absPath)
 		if err != nil {
 			continue
 		}
-		metaPath := MetaFileName(absPath)
+		metaPath, err := MetaPath(e.projectRoot, absPath)
+		if err != nil {
+			continue
+		}
 		meta, _ := ReadMeta(metaPath)
 		if meta == nil {
 			meta = &AssetMeta{
@@ -121,12 +130,21 @@ func (e *SyncEngine) Push(entry config.SyncEntry, dryRun bool, preserveState boo
 }
 
 // buildZip creates a zip archive from the given local asset files.
+// .wkignore filtering already happened in Status(); this walk trusts the
+// passed list but still honors the implicit .wk/ skip if somehow present.
 func (e *SyncEngine) buildZip(localDir string, assets []AssetStatus) ([]byte, error) {
 	var buf bytes.Buffer
 	w := zip.NewWriter(&buf)
 
+	ignore := e.ignoreMatcher()
+
 	for _, s := range assets {
 		absPath := filepath.Join(localDir, s.FilePath)
+		if projectRel, rerr := e.projectRel(absPath); rerr == nil {
+			if ignore.ShouldSkip(projectRel, false) {
+				continue
+			}
+		}
 		data, err := os.ReadFile(absPath)
 		if err != nil {
 			return nil, fmt.Errorf("reading %s: %w", s.FilePath, err)
@@ -134,9 +152,10 @@ func (e *SyncEngine) buildZip(localDir string, assets []AssetStatus) ([]byte, er
 
 		// Use the zip_name from meta if available, otherwise use the relative path.
 		zipName := s.FilePath
-		metaPath := MetaFileName(absPath)
-		if meta, err := ReadMeta(metaPath); err == nil && meta.ZipName != "" {
-			zipName = meta.ZipName
+		if metaPath, err := MetaPath(e.projectRoot, absPath); err == nil {
+			if meta, err := ReadMeta(metaPath); err == nil && meta.ZipName != "" {
+				zipName = meta.ZipName
+			}
 		}
 
 		f, err := w.Create(zipName)

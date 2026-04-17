@@ -47,11 +47,12 @@ func seedKeychainProfile(t *testing.T, p *auth.Profile, active bool) {
 	}
 }
 
-// seedProjectProfilesEnv writes a wk.toml + profiles.env into cwd with the
-// given profile name.
+// seedProjectProfilesEnv writes a .wk/wk.toml + profiles.env into cwd with
+// the given profile name.
 func seedProjectProfilesEnv(t *testing.T, cwd, name string) {
 	t.Helper()
-	os.WriteFile(filepath.Join(cwd, config.ProjectFile), []byte(`name = "test"`+"\n"), 0644)
+	os.MkdirAll(filepath.Join(cwd, config.ProjectDir), 0755)
+	os.WriteFile(config.ProjectConfigPath(cwd), []byte(`name = "test"`+"\n"), 0644)
 	body := "NAME=" + name + "\nREGION=us\nWORKSPACE=acme\nENVIRONMENT=ci\nTOKEN=tok\n"
 	os.WriteFile(filepath.Join(cwd, auth.ProfilesEnvFile), []byte(body), 0600)
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -32,7 +31,7 @@ func resolveAPIClient(cmd *cobra.Command) (api.Client, *auth.Profile, error) {
 	if !explicitProfile {
 		if cwd, err := os.Getwd(); err == nil {
 			if projectRoot, err := config.FindProjectRoot(cwd); err == nil {
-				if cfg, err := config.Load(filepath.Join(projectRoot, config.ProjectFile)); err == nil {
+				if cfg, err := config.Load(config.ProjectConfigPath(projectRoot)); err == nil {
 					if err := checkProfileMatch(cfg, profile.Name); err != nil {
 						return nil, nil, err
 					}
@@ -170,7 +169,7 @@ func fileStoreForCwd() (*auth.FileStore, error) {
 	}
 	projectRoot, err := config.FindProjectRoot(cwd)
 	if err != nil {
-		return nil, fmt.Errorf("--store-type file requires a project directory (wk.toml not found)")
+		return nil, fmt.Errorf("--store-type file requires a project directory (.wk/wk.toml not found)")
 	}
 	fs := auth.NewFileStore(projectRoot)
 	if !fs.Exists() {

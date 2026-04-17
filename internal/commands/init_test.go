@@ -106,7 +106,7 @@ func TestInitLocalPathDefaults(t *testing.T) {
 			}
 
 			// Init creates a container directory: <cwd>/test-proj/wk.toml
-			cfg, err := config.Load(filepath.Join(dir, "test-proj", config.ProjectFile))
+			cfg, err := config.Load(config.ProjectConfigPath(filepath.Join(dir, "test-proj")))
 			if err != nil {
 				t.Fatalf("loading config: %v", err)
 			}
@@ -147,7 +147,7 @@ func TestInitCreatesContainerDirectory(t *testing.T) {
 	}
 
 	// wk.toml should be inside the container.
-	cfg, err := config.Load(filepath.Join(projectDir, config.ProjectFile))
+	cfg, err := config.Load(config.ProjectConfigPath(projectDir))
 	if err != nil {
 		t.Fatalf("loading config: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestInitScaffoldsIntoExistingDir(t *testing.T) {
 		t.Fatalf("init into existing dir failed: %v", err)
 	}
 
-	cfg, err := config.Load(filepath.Join(projectDir, config.ProjectFile))
+	cfg, err := config.Load(config.ProjectConfigPath(projectDir))
 	if err != nil {
 		t.Fatalf("loading config: %v", err)
 	}
@@ -204,10 +204,10 @@ func TestInitErrorsOnExistingProject(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	// Create a project directory with wk.toml already inside.
+	// Create a project directory with .wk/wk.toml already inside.
 	projectDir := filepath.Join(dir, "existing")
-	os.Mkdir(projectDir, 0755)
-	config.Save(filepath.Join(projectDir, config.ProjectFile), &config.Config{Name: "existing"})
+	os.MkdirAll(filepath.Join(projectDir, config.ProjectDir), 0755)
+	config.Save(config.ProjectConfigPath(projectDir), &config.Config{Name: "existing"})
 
 	root := NewRootCmd()
 	root.AddCommand(newInitCmd())
@@ -226,8 +226,9 @@ func TestInitNestingGuard(t *testing.T) {
 	origDir, _ := os.Getwd()
 	defer os.Chdir(origDir)
 
-	// Create a wk.toml in the temp dir to simulate being inside a project.
-	config.Save(filepath.Join(dir, config.ProjectFile), &config.Config{Name: "parent"})
+	// Create .wk/wk.toml in the temp dir to simulate being inside a project.
+	os.MkdirAll(filepath.Join(dir, config.ProjectDir), 0755)
+	config.Save(config.ProjectConfigPath(dir), &config.Config{Name: "parent"})
 
 	// cd into a subdirectory of the project.
 	subDir := filepath.Join(dir, "subdir")
@@ -284,7 +285,7 @@ func TestInitWritesProfileSnapshot(t *testing.T) {
 		t.Fatalf("init failed: %v", err)
 	}
 
-	cfg, err := config.Load(filepath.Join(dir, "snap-project", config.ProjectFile))
+	cfg, err := config.Load(config.ProjectConfigPath(filepath.Join(dir, "snap-project")))
 	if err != nil {
 		t.Fatalf("loading config: %v", err)
 	}
@@ -376,7 +377,7 @@ func TestInitStoreTypeFile_WarnsWhenMissing(t *testing.T) {
 	}
 
 	// wk.toml should exist with profile reference but no snapshot fields.
-	cfg, err := config.Load(filepath.Join(dir, "file-proj", config.ProjectFile))
+	cfg, err := config.Load(config.ProjectConfigPath(filepath.Join(dir, "file-proj")))
 	if err != nil {
 		t.Fatalf("loading config: %v", err)
 	}
@@ -414,7 +415,7 @@ func TestInitStoreTypeFile_HydratesFromProfilesEnv(t *testing.T) {
 		t.Fatalf("init failed: %v", err)
 	}
 
-	cfg, err := config.Load(filepath.Join(projectDir, config.ProjectFile))
+	cfg, err := config.Load(config.ProjectConfigPath(projectDir))
 	if err != nil {
 		t.Fatalf("loading config: %v", err)
 	}
@@ -423,6 +424,183 @@ func TestInitStoreTypeFile_HydratesFromProfilesEnv(t *testing.T) {
 	}
 	if cfg.Environment != "prod" {
 		t.Errorf("Environment = %q, want prod", cfg.Environment)
+	}
+}
+
+func TestInitWritesGitignore(t *testing.T) {
+	cleanupHome := setupTestHome(t)
+	defer cleanupHome()
+
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	root := NewRootCmd()
+	root.AddCommand(newInitCmd())
+	root.SetArgs([]string{"init", "--name", "gitigproj", "--profile", "dev", "--json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "gitigproj", ".gitignore"))
+	if err != nil {
+		t.Fatalf("reading .gitignore: %v", err)
+	}
+	if !strings.Contains(string(data), "/.wk/") {
+		t.Errorf(".gitignore missing /.wk/ entry, got:\n%s", data)
+	}
+}
+
+func TestInitGitignoreIdempotent(t *testing.T) {
+	cleanupHome := setupTestHome(t)
+	defer cleanupHome()
+
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	// Pre-create target with an existing .gitignore that already lists /.wk/.
+	projectDir := filepath.Join(dir, "idemproj")
+	os.MkdirAll(projectDir, 0755)
+	os.WriteFile(filepath.Join(projectDir, ".gitignore"), []byte("node_modules/\n/.wk/\n"), 0644)
+
+	root := NewRootCmd()
+	root.AddCommand(newInitCmd())
+	root.SetArgs([]string{"init", "--name", "idemproj", "--profile", "dev", "--json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(projectDir, ".gitignore"))
+	count := strings.Count(string(data), "/.wk/")
+	if count != 1 {
+		t.Errorf(".gitignore should contain /.wk/ exactly once, got %d:\n%s", count, data)
+	}
+}
+
+func TestInitOverwriteFlag(t *testing.T) {
+	cleanupHome := setupTestHome(t)
+	defer cleanupHome()
+
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	// First init creates the project.
+	root := NewRootCmd()
+	root.AddCommand(newInitCmd())
+	root.SetArgs([]string{"init", "--name", "overproj", "--profile", "dev", "--json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("first init failed: %v", err)
+	}
+
+	// Second init without --overwrite should fail in non-interactive mode.
+	root = NewRootCmd()
+	root.AddCommand(newInitCmd())
+	root.SetArgs([]string{"init", "--name", "overproj", "--profile", "dev", "--json"})
+	if err := root.Execute(); err == nil {
+		t.Fatal("expected error re-initing without --overwrite, got nil")
+	}
+
+	// With --overwrite it should succeed.
+	root = NewRootCmd()
+	root.AddCommand(newInitCmd())
+	root.SetArgs([]string{"init", "--name", "overproj", "--profile", "dev", "--overwrite", "--json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init --overwrite failed: %v", err)
+	}
+}
+
+func TestInitOverwritePreservesSyncEntries(t *testing.T) {
+	cleanupHome := setupTestHome(t)
+	defer cleanupHome()
+
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	// First init creates the project.
+	root := NewRootCmd()
+	root.AddCommand(newInitCmd())
+	root.SetArgs([]string{"init", "--name", "multiproj", "--profile", "dev", "--json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("first init failed: %v", err)
+	}
+
+	// Hand-edit wk.toml to add multiple sync entries — this mirrors the
+	// current workaround for issue #29 (single-entry limit on init).
+	configPath := config.ProjectConfigPath(filepath.Join(dir, "multiproj"))
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("loading config: %v", err)
+	}
+	cfg.Sync = []config.SyncEntry{
+		{ServerPath: "Team/A", LocalPath: "a"},
+		{ServerPath: "Team/B", LocalPath: "b"},
+	}
+	if err := config.Save(configPath, cfg); err != nil {
+		t.Fatalf("saving edited config: %v", err)
+	}
+
+	// Re-init with --overwrite — without preservation this would drop both entries.
+	root = NewRootCmd()
+	root.AddCommand(newInitCmd())
+	root.SetArgs([]string{"init", "--name", "multiproj", "--profile", "dev", "--overwrite", "--json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("overwrite init failed: %v", err)
+	}
+
+	reloaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("reloading config: %v", err)
+	}
+	if len(reloaded.Sync) != 2 {
+		t.Fatalf("sync entries after overwrite = %d, want 2 (should have been preserved)", len(reloaded.Sync))
+	}
+	paths := map[string]bool{}
+	for _, s := range reloaded.Sync {
+		paths[s.ServerPath] = true
+	}
+	if !paths["Team/A"] || !paths["Team/B"] {
+		t.Errorf("preserved entries missing: %+v", reloaded.Sync)
+	}
+}
+
+func TestInitOverwriteAppendsNewServerPath(t *testing.T) {
+	cleanupHome := setupTestHome(t)
+	defer cleanupHome()
+
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	// First init with one --server-path.
+	root := NewRootCmd()
+	root.AddCommand(newInitCmd())
+	root.SetArgs([]string{"init", "--name", "addproj", "--profile", "dev", "--server-path", "Team/A", "--json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("first init failed: %v", err)
+	}
+
+	// Re-init with --overwrite and a different --server-path — should keep A and add B.
+	root = NewRootCmd()
+	root.AddCommand(newInitCmd())
+	root.SetArgs([]string{"init", "--name", "addproj", "--profile", "dev", "--overwrite", "--server-path", "Team/B", "--json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("overwrite init failed: %v", err)
+	}
+
+	cfg, err := config.Load(config.ProjectConfigPath(filepath.Join(dir, "addproj")))
+	if err != nil {
+		t.Fatalf("loading config: %v", err)
+	}
+	if len(cfg.Sync) != 2 {
+		t.Fatalf("sync entries = %d, want 2 (original preserved + new appended): %+v", len(cfg.Sync), cfg.Sync)
 	}
 }
 
