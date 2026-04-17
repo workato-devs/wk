@@ -167,10 +167,25 @@ replacing an existing project. Mirrors the contract used by 'wk auth login'.`,
 				}
 			}
 
+			// Reject names that would escape the current working directory
+			// (e.g. "../evil"), contain path separators ("foo/bar"), or
+			// resolve to the cwd itself ("." / "").
+			if err := validateProjectName(name); err != nil {
+				return err
+			}
+
 			// Resolve the target directory: <cwd>/<name>/
 			// Config lives at <target>/.wk/wk.toml per ADR-005 Decision 1.
 			targetDir := filepath.Join(cwd, name)
 			configPath := config.ProjectConfigPath(targetDir)
+
+			// Belt-and-suspenders traversal guard. Even with validateProjectName,
+			// require that the cleaned target is an immediate child of cwd —
+			// this catches any edge case the name-level check might miss
+			// (platform-specific path quirks, future changes, etc.).
+			if filepath.Dir(targetDir) != cwd {
+				return fmt.Errorf("refusing to scaffold outside current directory: %s", targetDir)
+			}
 
 			// Validate profile according to --store-type. File-store profiles
 			// live in the target directory's profiles.env; keychain profiles
@@ -345,6 +360,28 @@ replacing an existing project. Mirrors the contract used by 'wk auth login'.`,
 	cmd.Flags().BoolVar(&flagOverwrite, "overwrite", false, "Overwrite an existing project config without prompting (non-interactive mode)")
 
 	return cmd
+}
+
+// validateProjectName rejects project names that would scaffold outside
+// the CWD or otherwise break the "project name = container folder name"
+// invariant from ADR-005 Decision 1. The name must be a single, ordinary
+// path component — no separators, no traversal segments, no leading dots.
+func validateProjectName(name string) error {
+	if name == "" {
+		return fmt.Errorf("project name cannot be empty")
+	}
+	if strings.ContainsAny(name, "/\\") {
+		return fmt.Errorf("project name %q must not contain path separators", name)
+	}
+	if name == "." || name == ".." {
+		return fmt.Errorf("project name %q is invalid", name)
+	}
+	// A name containing a null byte is never valid on any supported OS
+	// and is the classic path-handling footgun — reject explicitly.
+	if strings.ContainsRune(name, 0) {
+		return fmt.Errorf("project name contains a null byte")
+	}
+	return nil
 }
 
 // pluralY returns "y" when n == 1 and "ies" otherwise, for grammatical

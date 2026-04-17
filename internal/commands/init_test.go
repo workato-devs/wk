@@ -604,6 +604,79 @@ func TestInitOverwriteAppendsNewServerPath(t *testing.T) {
 	}
 }
 
+func TestInitRejectsTraversalNames(t *testing.T) {
+	cleanupHome := setupTestHome(t)
+	defer cleanupHome()
+
+	cases := []struct {
+		name     string
+		flagName string
+	}{
+		{"parent traversal", "../evil"},
+		{"pure parent", ".."},
+		{"deeper traversal", "../../../etc"},
+		{"embedded traversal", "foo/../bar"},
+		{"path separator", "foo/bar"},
+		{"backslash separator", "foo\\bar"},
+		{"absolute path", "/tmp/evil"},
+		{"dot", "."},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			origDir, _ := os.Getwd()
+			os.Chdir(dir)
+			defer os.Chdir(origDir)
+
+			root := NewRootCmd()
+			root.AddCommand(newInitCmd())
+			root.SetArgs([]string{"init", "--name", tc.flagName, "--profile", "dev", "--json"})
+			err := root.Execute()
+			if err == nil {
+				t.Fatalf("expected error for name %q, got nil", tc.flagName)
+			}
+
+			// Verify no files leaked outside the temp dir. We check the
+			// parent of the temp dir for any .wk/ that shouldn't exist.
+			parent := filepath.Dir(dir)
+			if entries, _ := os.ReadDir(parent); entries != nil {
+				for _, e := range entries {
+					if e.Name() == ".wk" || e.Name() == "evil" || e.Name() == "etc" {
+						t.Errorf("traversal leaked file %q into parent %s", e.Name(), parent)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestValidateProjectName(t *testing.T) {
+	cases := []struct {
+		in      string
+		wantErr bool
+	}{
+		{"my-project", false},
+		{"my_project_42", false},
+		{"a.b", false}, // dots inside name OK, just not "." or ".."
+		{"", true},
+		{".", true},
+		{"..", true},
+		{"../x", true},
+		{"foo/bar", true},
+		{"foo\\bar", true},
+		{"foo\x00bar", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			err := validateProjectName(tc.in)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("validateProjectName(%q) error = %v, wantErr %v", tc.in, err, tc.wantErr)
+			}
+		})
+	}
+}
+
 func TestInitActiveProfileMismatch(t *testing.T) {
 	cleanupHome := setupTestHome(t)
 	defer cleanupHome()
