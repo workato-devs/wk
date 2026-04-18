@@ -63,6 +63,30 @@ func invalidFolderCacheErr(err error) bool {
 	return errors.Is(err, wkerrors.ErrAPINotFound)
 }
 
+// wrapFolderErr annotates a folder-resolution or API error with the sync
+// entry's server_path, cached folder_id, and (when available) the snapshot
+// workspace name, so developers can tell which [[sync]] entry failed and
+// whether a workspace-mismatch is likely the cause.
+func (e *SyncEngine) wrapFolderErr(err error, entry config.SyncEntry, origFolderID int) error {
+	if err == nil {
+		return nil
+	}
+	workspace := ""
+	if e.config != nil && e.config.Workspace != "" {
+		workspace = e.config.Workspace
+	}
+	if errors.Is(err, wkerrors.ErrAPINotFound) && origFolderID != 0 {
+		if workspace != "" {
+			return fmt.Errorf("folder_id %d (server_path %q) not found in workspace %q — cached value may be from a different workspace: %w", origFolderID, entry.ServerPath, workspace, err)
+		}
+		return fmt.Errorf("folder_id %d (server_path %q) not found — cached value may be from a different workspace: %w", origFolderID, entry.ServerPath, err)
+	}
+	if workspace != "" {
+		return fmt.Errorf("resolving folder %q in workspace %q: %w", entry.ServerPath, workspace, err)
+	}
+	return fmt.Errorf("resolving folder %q: %w", entry.ServerPath, err)
+}
+
 // resolveFolderID walks the Workato folder hierarchy to find the folder
 // matching serverPath (e.g. "Recipes/Production/Integrations").
 // The special name "All projects" is treated as the implicit workspace root

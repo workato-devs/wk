@@ -46,19 +46,28 @@ func (e *SyncEngine) Pull(entry config.SyncEntry, force bool) ([]PullResult, err
 	// Resolve folder ID (cached when possible, ADR-005 Decision 9).
 	folderID, err := e.folderIDForEntry(ctx, entry)
 	if err != nil {
-		return nil, fmt.Errorf("resolving folder %q: %w", entry.ServerPath, err)
+		return nil, e.wrapFolderErr(err, entry, entry.FolderID)
 	}
 
 	// Trigger export; invalidate cache and retry once on 404.
+	origFolderID := folderID
+	retried := false
 	pkgID, err := e.packages.Export(ctx, folderID)
 	if err != nil && entry.FolderID != 0 && invalidFolderCacheErr(err) {
 		if fresh, rerr := e.resolveAndCache(ctx, entry.ServerPath); rerr == nil {
 			folderID = fresh
+			retried = true
 			pkgID, err = e.packages.Export(ctx, folderID)
+		} else {
+			return nil, e.wrapFolderErr(rerr, entry, origFolderID)
 		}
 	}
 	if err != nil {
-		return nil, fmt.Errorf("starting export: %w", err)
+		wrapID := origFolderID
+		if retried {
+			wrapID = 0 // retry used fresh ID; don't blame the stale cache
+		}
+		return nil, e.wrapFolderErr(err, entry, wrapID)
 	}
 
 	// Wait for export to complete.
