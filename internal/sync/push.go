@@ -80,20 +80,29 @@ func (e *SyncEngine) Push(entry config.SyncEntry, dryRun bool, preserveState boo
 	// Resolve folder ID (cached when possible, ADR-005 Decision 9).
 	folderID, err := e.folderIDForEntry(ctx, entry)
 	if err != nil {
-		return nil, fmt.Errorf("resolving folder %q: %w", entry.ServerPath, err)
+		return nil, e.wrapFolderErr(err, entry, entry.FolderID)
 	}
 
 	// Upload; invalidate cache and retry once on 404.
+	origFolderID := folderID
+	retried := false
 	restartRecipes := preserveState
 	importID, err := e.packages.Import(ctx, folderID, zipData, restartRecipes)
 	if err != nil && entry.FolderID != 0 && invalidFolderCacheErr(err) {
 		if fresh, rerr := e.resolveAndCache(ctx, entry.ServerPath); rerr == nil {
 			folderID = fresh
+			retried = true
 			importID, err = e.packages.Import(ctx, folderID, zipData, restartRecipes)
+		} else {
+			return nil, e.wrapFolderErr(rerr, entry, origFolderID)
 		}
 	}
 	if err != nil {
-		return nil, fmt.Errorf("uploading package: %w", err)
+		wrapID := origFolderID
+		if retried {
+			wrapID = 0
+		}
+		return nil, e.wrapFolderErr(err, entry, wrapID)
 	}
 
 	// Wait for import to complete.

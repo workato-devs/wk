@@ -1,6 +1,10 @@
 package api
 
-import "fmt"
+import (
+	"fmt"
+
+	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
+)
 
 // APIError represents an error response from the Workato API.
 type APIError struct {
@@ -14,6 +18,25 @@ func (e *APIError) Error() string {
 		return fmt.Sprintf("API error %d (%s): %s", e.StatusCode, e.ErrorType, e.Message)
 	}
 	return fmt.Sprintf("API error %d: %s", e.StatusCode, e.Message)
+}
+
+// Is maps HTTP status codes to the sentinel errors in internal/errors so
+// callers can use errors.Is(err, wkerrors.ErrAPINotFound) without reaching
+// into the concrete type. 5xx responses all match ErrAPIServer.
+func (e *APIError) Is(target error) bool {
+	switch target {
+	case wkerrors.ErrAPIUnauthorized:
+		return e.StatusCode == 401
+	case wkerrors.ErrAPIForbidden:
+		return e.StatusCode == 403
+	case wkerrors.ErrAPINotFound:
+		return e.StatusCode == 404
+	case wkerrors.ErrAPIRateLimit:
+		return e.StatusCode == 429
+	case wkerrors.ErrAPIServer:
+		return e.StatusCode >= 500 && e.StatusCode < 600
+	}
+	return false
 }
 
 // IsNotFound returns true if the error is a 404.
