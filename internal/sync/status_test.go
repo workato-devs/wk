@@ -8,19 +8,34 @@ import (
 	"github.com/workato-devs/wk-cli-beta/internal/config"
 )
 
+// writeAssetWithMeta writes an asset at <root>/<relPath> and its meta
+// at the corresponding .wk/ mirror path.
+func writeAssetWithMeta(t *testing.T, root, relPath string, content []byte, meta *AssetMeta) {
+	t.Helper()
+	assetAbs := filepath.Join(root, relPath)
+	if err := os.MkdirAll(filepath.Dir(assetAbs), 0755); err != nil {
+		t.Fatalf("mkdir asset dir: %v", err)
+	}
+	if err := os.WriteFile(assetAbs, content, 0644); err != nil {
+		t.Fatalf("write asset: %v", err)
+	}
+	metaPath, err := MetaPath(root, assetAbs)
+	if err != nil {
+		t.Fatalf("MetaPath: %v", err)
+	}
+	if err := WriteMeta(metaPath, meta); err != nil {
+		t.Fatalf("WriteMeta: %v", err)
+	}
+}
+
 func TestStatusUnchanged(t *testing.T) {
 	dir := t.TempDir()
 	content := []byte("hello world")
 
-	// Write asset file
-	os.WriteFile(filepath.Join(dir, "recipe.json"), content, 0644)
-
-	// Write meta with matching hash
-	meta := &AssetMeta{
+	writeAssetWithMeta(t, dir, "recipe.json", content, &AssetMeta{
 		ServerPath:  "test/recipe.json",
 		ContentHash: ComputeHash(content),
-	}
-	WriteMeta(MetaFileName(filepath.Join(dir, "recipe.json")), meta)
+	})
 
 	engine := &SyncEngine{projectRoot: dir}
 	entry := config.SyncEntry{LocalPath: "."}
@@ -40,15 +55,10 @@ func TestStatusUnchanged(t *testing.T) {
 func TestStatusModified(t *testing.T) {
 	dir := t.TempDir()
 
-	// Write asset file
-	os.WriteFile(filepath.Join(dir, "recipe.json"), []byte("modified content"), 0644)
-
-	// Write meta with old hash
-	meta := &AssetMeta{
+	writeAssetWithMeta(t, dir, "recipe.json", []byte("modified content"), &AssetMeta{
 		ServerPath:  "test/recipe.json",
 		ContentHash: ComputeHash([]byte("original content")),
-	}
-	WriteMeta(MetaFileName(filepath.Join(dir, "recipe.json")), meta)
+	})
 
 	engine := &SyncEngine{projectRoot: dir}
 	entry := config.SyncEntry{LocalPath: "."}

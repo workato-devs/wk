@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/workato-devs/wk-cli-beta/internal/config"
 	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
 )
 
@@ -19,13 +20,18 @@ const ProfilesEnvFile = "profiles.env"
 // FileStore reads profiles and credentials from a project-local profiles.env.
 // The CLI reads this file but never writes to it (ADR-006 Sub-decision 3).
 // The file is developer- or pipeline-authored.
+//
+// The file lives at <projectRoot>/.wk/profiles.env — alongside wk.toml inside
+// the tool-managed directory. Placing it there means it's automatically
+// hidden by .wk/.gitignore (ADR-005 Decision 8), which matters because
+// profiles.env holds API tokens and must never be committed.
 type FileStore struct {
 	Path string // absolute path to profiles.env
 }
 
-// NewFileStore returns a FileStore anchored at projectRoot/profiles.env.
+// NewFileStore returns a FileStore anchored at <projectRoot>/.wk/profiles.env.
 func NewFileStore(projectRoot string) *FileStore {
-	return &FileStore{Path: filepath.Join(projectRoot, ProfilesEnvFile)}
+	return &FileStore{Path: filepath.Join(projectRoot, config.ProjectDir, ProfilesEnvFile)}
 }
 
 // Exists reports whether the backing file is present.
@@ -132,7 +138,7 @@ func (r fileRecord) toProfile() *Profile {
 	region := Region(r.region)
 	baseURL := r.baseURL
 	if baseURL == "" {
-		baseURL = defaultBaseURL(region)
+		baseURL = config.BaseURL(string(region))
 	}
 	return &Profile{
 		Name:        r.name,
@@ -151,25 +157,6 @@ func (r fileRecord) toCredential() *Credential {
 		Region:    Region(r.region),
 		StoreType: StoreFile,
 		CreatedAt: time.Now(),
-	}
-}
-
-// defaultBaseURL mirrors config.BaseURL but is declared here to avoid
-// importing internal/config from internal/auth.
-func defaultBaseURL(region Region) string {
-	switch region {
-	case RegionEU:
-		return "https://app.eu.workato.com"
-	case RegionJP:
-		return "https://app.jp.workato.com"
-	case RegionAU:
-		return "https://app.au.workato.com"
-	case RegionSG:
-		return "https://app.sg.workato.com"
-	case RegionTrial:
-		return "https://app.trial.workato.com"
-	default:
-		return "https://www.workato.com"
 	}
 }
 

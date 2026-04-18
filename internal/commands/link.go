@@ -3,7 +3,6 @@ package commands
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -16,6 +15,9 @@ func newLinkCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "link",
 		Short: "Link the current project to an auth profile",
+		Long: `Update the auth profile recorded in .wk/wk.toml for the current project.
+Run from anywhere inside a wk project tree; the command walks upward to
+locate .wk/wk.toml.`,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
@@ -33,7 +35,7 @@ func newLinkCmd() *cobra.Command {
 				return fmt.Errorf("no wk.toml found. Run 'wk init' first.")
 			}
 
-			configPath := filepath.Join(projectRoot, config.ProjectFile)
+			configPath := config.ProjectConfigPath(projectRoot)
 			cfg, err := config.Load(configPath)
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)

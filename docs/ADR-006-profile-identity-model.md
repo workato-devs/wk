@@ -74,7 +74,7 @@ Every required profile field on `wk auth login` follows the same resolution orde
 |---|---|---|
 | `--token` | Yes | None — user must provide |
 | `--region` | Yes | Static (`us`) |
-| `--name` | Yes | Computed: `<workspace-slug>-<environment>[-<region>]` (see below) |
+| `--name` | Yes | Computed: `<region>-<workspace-slug>-<environment>` (see below) |
 | `--workspace` | Yes | Introspected from `GET /users/me` immediately after token validation |
 | `--environment` | Yes | Prompted interactively; **required explicitly in non-interactive mode** (see Sub-decision 10) |
 | `--store-type` | No | Defaults to `keychain` (see Sub-decision 3) |
@@ -84,17 +84,19 @@ Every required profile field on `wk auth login` follows the same resolution orde
 
 `--environment` remains user-provided in this revision. Introspection via `GET /activity_logs.workspace.environment` was considered but deferred due to edge cases (empty logs on new workspaces, missing audit permissions, network failures) that require careful fallback design.
 
-**Auto-name default format:** When `--name` is omitted, the CLI computes `<workspace-slug>-<environment>[-<region>]`:
+**Auto-name default format:** When `--name` is omitted, the CLI computes `<region>-<workspace-slug>-<environment>`:
 
+- Region is always the leading component — including for `us`. This makes the most discriminating field immediately visible, groups profiles by region in `wk auth list` output, and avoids the prior "region hidden in common case, tacked on the end otherwise" inconsistency that testing surfaced as confusing.
 - Slugify: lowercase the workspace name, replace non-alphanumerics with `-`, collapse repeated separators, trim.
-- Region suffix is appended only when the region is non-default (anything other than `us`). This keeps names quiet in the common case and disambiguates the cross-region edge case (same workspace reachable from multiple regions).
+- Empty region falls back to `us` (the default).
 
 Examples:
 
-- `"Acme Corp"` + `prod` + `us` → `acme-corp-prod`
-- `"Acme Corp"` + `prod` + `eu` → `acme-corp-prod-eu`
+- `"Acme Corp"` + `prod` + `us` → `us-acme-corp-prod`
+- `"Acme Corp"` + `prod` + `eu` → `eu-acme-corp-prod`
+- `"Acme"` + `dev` + `il` → `il-acme-dev`
 
-In interactive mode, the computed default is shown in the prompt (`Profile name [acme-corp-prod]:`) and the developer can edit it. In non-interactive mode, the default is applied silently when `--name` is omitted. Collisions rely on the existing uniqueness constraints (Sub-decision 1): a re-login producing an already-taken name errors from `SaveProfile`, and the developer either passes `--force` or supplies an explicit `--name`.
+In interactive mode, the computed default is shown in the prompt (`Profile name [us-acme-corp-prod]:`) and the developer can edit it. In non-interactive mode, the default is applied silently when `--name` is omitted. Collisions rely on the existing uniqueness constraints (Sub-decision 1): a re-login producing an already-taken name errors from `SaveProfile`, and the developer either passes `--force` or supplies an explicit `--name`.
 
 **Interactive prompt order:** Introspection requires the token before workspace/email are known, and the auto-computed name requires workspace + environment before its default is meaningful. The interactive flow resolves fields in this order:
 
@@ -102,7 +104,7 @@ In interactive mode, the computed default is shown in the prompt (`Profile name 
 2. **`GET /users/me`** — called silently with the token. Populates the in-memory profile's `workspace`, `workspace_id`, and `email`. Failure here aborts login (a token that can't authenticate is not worth persisting).
 3. **`--workspace` mismatch check** — if `--workspace` was supplied explicitly, compare to the introspected value and error on mismatch.
 4. **Environment** — prompt if `--environment` is not provided.
-5. **Name** — prompt if `--name` is not provided, showing the auto-computed default in brackets. Computed default uses the introspected workspace + the resolved environment + (conditionally) the region.
+5. **Name** — prompt if `--name` is not provided, showing the auto-computed default in brackets. Computed default is `<region>-<workspace-slug>-<environment>`.
 6. **Region** — accepts the `us` default silently; prompted only if `--region` is explicitly set to an empty/invalid value or if a future revision adds a region-selection flow.
 7. **Save** — uniqueness checks (Sub-decision 1), overwrite-confirmation if applicable, persist to the credential store.
 
@@ -190,9 +192,9 @@ TOKEN=wk-yyyyy
 - Each `NAME=` line starts a new profile record. Fields following it until the next `NAME=` line (or EOF) belong to that profile.
 - Keys are unprefixed — no `WK_` prefix. The file is CLI-owned; key names correspond directly to profile struct fields.
 - The CLI reads but **does not write** to this file. Developers and CI/CD pipelines create and manage it directly.
-- The file lives at project level, alongside `wk.toml`.
+- **Path:** `<project-root>/.wk/profiles.env` — alongside `wk.toml` inside the tool-managed directory (per ADR-005 Decision 1). Co-locating with `wk.toml` also means `profiles.env` is automatically covered by `.wk/.gitignore` (ADR-005 Decision 8), so the secrets file cannot be committed by accident.
 - Multi-profile files are supported (designed for) but single-profile is the common case.
-- A `.env.example` file in the project documentation shows the expected format and explains file-store-specific capabilities.
+- A `docs/profiles.env.example` file in the repo shows the expected format. It deliberately lives under `docs/` rather than the project root so that a developer can't confuse it for a working `profiles.env` in the wrong location — the real file belongs at `<your-project>/.wk/profiles.env`.
 
 **Note:** This is not a standard `.env` file — standard dotenv parsers expect unique keys. This is a CLI-owned file that uses key=value syntax with `NAME=` as a record delimiter. The `.env` extension signals "key=value config with secrets — do not commit," which is the right developer signal.
 
@@ -243,7 +245,8 @@ steps:
   - uses: actions/checkout@v4
   - name: Write credentials
     run: |
-      cat <<EOF > profiles.env
+      mkdir -p .wk
+      cat <<EOF > .wk/profiles.env
       NAME=ci
       WORKSPACE=acme-corp
       ENVIRONMENT=prod
@@ -263,9 +266,9 @@ steps:
 **Profile validation:** `init --profile <name>` validates that the named profile exists before writing `wk.toml`. The `--store-type` flag tells `init` which store to check:
 
 - Default (no `--store-type`): checks `~/.wk/profiles.json` (keychain profiles)
-- `--store-type file`: checks `profiles.env` in the target project directory. Per ADR-005 Decision 2 step 4, `init` can scaffold into an existing directory — the developer creates the directory and places `profiles.env` in it before running `init`.
+- `--store-type file`: checks `<target>/.wk/profiles.env`. Per ADR-005 Decision 2 step 4, `init` can scaffold into an existing directory — the developer creates `<target>/.wk/` and places `profiles.env` in it before running `init` (a one-liner: `mkdir -p my-project/.wk && write-secrets > my-project/.wk/profiles.env`).
 
-If `--store-type file` is specified and no `profiles.env` exists in the target directory, `init` warns ("no profiles.env found — create one before running commands") and defers credential validation to runtime. Profile metadata is not validated in this case.
+If `--store-type file` is specified and no `profiles.env` exists at that path, `init` warns ("no profiles.env found — create one before running commands") and defers credential validation to runtime. Profile metadata is not validated in this case.
 
 **Active profile mismatch:** If the active profile (from `~/.wk/active_profile`) does not match the `--profile` argument, `init` fails:
 
@@ -340,7 +343,7 @@ Considered introspecting environment from `GET /activity_logs.workspace.environm
 ### What becomes easier
 
 - **Multi-environment workflows**: Developers can see at a glance which workspace and environment each profile targets, rather than relying on naming conventions.
-- **Minimum-flag login**: In a TTY, `wk auth login --token X` is sufficient — workspace introspects from `/users/me`, name computes from `<workspace-slug>-<environment>`, region defaults to `us`. Only `--environment` is prompted. In non-interactive mode, the minimum is `--token` + `--environment`.
+- **Minimum-flag login**: In a TTY, `wk auth login --token X` is sufficient — workspace introspects from `/users/me`, name computes from `<region>-<workspace-slug>-<environment>`, region defaults to `us`. Only `--environment` is prompted. In non-interactive mode, the minimum is `--token` + `--environment`.
 - **Project recognition**: `cat wk.toml` reveals which workspace, environment, and account a project targets without cross-referencing profile aliases or opening `~/.wk/profiles.json`.
 - **CI/CD setup**: Pipelines produce a `profiles.env` file from their secrets manager — no `auth login` step, no keychain dependency, same profile schema as local dev.
 - **Safety**: `auth list` output shows the actual target (workspace, environment, region), reducing the risk of operating against the wrong environment. `init` validates profiles exist and enforces active-profile consistency.
@@ -354,7 +357,7 @@ Considered introspecting environment from `GET /activity_logs.workspace.environm
 - **`wk init` writes more fields**: `init` must resolve workspace, environment, and email from the active profile and write them to `wk.toml`. Minimal code addition but a new responsibility.
 - **Two representations of workspace/environment**: The profile store remains authoritative; `wk.toml` holds a local snapshot. Drift is possible (profile retargeted, workspace renamed server-side). Drift is display-only — routing always uses the profile store — and handling is deferred pending field signal.
 - **Interactive vs. non-interactive asymmetry**: `wk auth login --token X` behaves differently in a TTY vs. a pipe. Documented explicitly, but a developer copying a working interactive command into a CI script needs to know to add `--environment`.
-- **File store setup**: Developers using the file store must manually create and manage `profiles.env`. The CLI does not scaffold it. Mitigated by the `.env.example` documentation and the simple key=value format.
+- **File store setup**: Developers using the file store must manually create and manage `<project>/.wk/profiles.env`. The CLI does not scaffold it. Mitigated by `docs/profiles.env.example` and the simple key=value format.
 - **`init` is stricter**: Profile must exist, active profile must match. Developers who previously used arbitrary profile names in `wk.toml` must now create the profile first. This is an intentional safety improvement.
 
 ### What we'll need to revisit
@@ -418,7 +421,12 @@ Considered introspecting environment from `GET /activity_logs.workspace.environm
 36. [x] Align `wk init` non-interactive contract with `wk auth login`: detect non-interactive mode via `!isatty(stdin) && !--no-input && !--json` (previously `--json`-only), fail fast on missing required flags (`--name`, `--profile`) before any prompt label prints, and add a `--no-input` flag for explicit non-interactive mode.
 37. [x] Harden interactive detection to require BOTH stdin and stdout to be TTYs. Captured-output contexts (`wk auth login --token X > out.log`) now correctly route through the non-interactive fail-fast path instead of printing orphaned prompt labels.
 38. [x] Consolidate non-interactive missing-flag errors: one error listing all missing required flags instead of one per flag.
+39. [x] Auto-name format change: `<region>-<workspace-slug>-<environment>` with region always leading. Previously region was omitted for `us` and suffixed for others, which hid the most discriminating field in the common case.
+40. [x] Region expansion: add `il` (`app.il.workato.com`) and `cn` (`app.workatoapp.cn` — note the distinct `.workatoapp.cn` domain, not the standard `app.<region>.workato.com` pattern; Workato's allowlist docs at https://docs.workato.com/en/security/ip-allowlists.html confirm this). Drift guard `TestBaseURL_AllRegions` ensures `config.RegionURLs` stays aligned with `auth.ValidRegions()` going forward.
+41. [x] Consolidate duplicate BaseURL mapping: `internal/auth/file.go` now routes through `config.BaseURL` instead of maintaining its own region → URL switch. The "avoid circular import" concern that justified the duplication is stale (config does not import auth).
+42. [x] Fix `profiles.env` location bug: `NewFileStore` was anchored at `<projectRoot>/profiles.env`, but the original design ("alongside `wk.toml`") meant the file should have moved into `.wk/` when ADR-005 relocated `wk.toml`. The path is now `<projectRoot>/.wk/profiles.env`, which also puts it under the `.wk/.gitignore` self-ignore for free. The example file moved from the repo root to `docs/profiles.env.example` so its presence can't mislead anyone into dropping a real `profiles.env` at the wrong location.
 
 ### Deferred to future revision
 34. [ ] File a Platform request for a `/session` or `/whoami` endpoint returning `{workspace, environment}` — unblocks environment introspection without the `/activity_logs` workaround
 35. [ ] Open a tracking issue for deferred work: environment introspection via `/activity_logs` (with documented fallback), drift detection between `wk.toml` snapshot fields and the currently-resolved profile
+43. [ ] VPW (Virtual Private Workato) customer support — Workato's allowlist page notes VPW customers have private docs with their own hostname conventions. No public pattern we can encode yet; pending an internal contact or a published VPW configuration spec.

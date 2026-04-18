@@ -373,7 +373,7 @@ Set these before starting:
 
 ```sh
 export TEST_TOKEN="<your-workato-api-token>"
-export TEST_REGION="us"  # or eu, jp, au, sg, trial
+export TEST_REGION="us"  # or eu, jp, au, sg, il, cn, trial
 export TEST_RECIPE_ID="<id-of-a-non-critical-recipe>"
 export TEST_CONN_ID="<id-of-a-connection>"
 export TEST_FOLDER_ID="<id-of-a-folder-with-recipes>"
@@ -549,7 +549,7 @@ See [docs/ci-setup.md](./ci-setup.md) for the full non-interactive and
 file-store workflows. Minimum smoke:
 
 ```sh
-# Inside a project directory containing a profiles.env with a "ci" record:
+# Inside a project directory containing .wk/profiles.env with a "ci" record:
 wk recipes list --profile ci --store-type file --json
 ```
 

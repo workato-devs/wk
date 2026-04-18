@@ -21,7 +21,11 @@ func newCloneCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "clone <folder-name>",
 		Short: "Clone a remote folder into a new local project",
-		Long:  "Initialize a new wk project and pull assets from the specified remote folder.",
+		Long: `Initialize a new wk project and pull assets from the specified remote
+folder. Creates <local-path>/.wk/wk.toml and <local-path>/.wk/.gitignore
+(self-ignore; the project-root .gitignore is never touched), and caches
+the resolved Workato folder_id into the sync entry so subsequent
+pull/push/diff calls skip the folder-hierarchy lookup.`,
 		Args: requireArgs(1, "folder name is required, e.g.: wk clone <folder-name>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			folderName := args[0]
@@ -46,8 +50,8 @@ func newCloneCmd() *cobra.Command {
 				return fmt.Errorf("resolving path: %w", err)
 			}
 
-			// Create the directory
-			if err := os.MkdirAll(absPath, 0755); err != nil {
+			// Create the container + .wk/ subdirectory per ADR-005 Decision 1.
+			if err := os.MkdirAll(filepath.Join(absPath, config.ProjectDir), 0755); err != nil {
 				return fmt.Errorf("creating directory: %w", err)
 			}
 
@@ -67,10 +71,15 @@ func newCloneCmd() *cobra.Command {
 				},
 			}
 
-			// Save wk.toml
-			cfgPath := filepath.Join(absPath, config.ProjectFile)
+			// Save wk.toml inside .wk/. FolderID populated by engine's
+			// write-through cache during Pull (ADR-005 Decision 9).
+			cfgPath := config.ProjectConfigPath(absPath)
 			if err := config.Save(cfgPath, cfg); err != nil {
 				return fmt.Errorf("saving config: %w", err)
+			}
+
+			if err := ensureWkGitignore(absPath); err != nil {
+				return fmt.Errorf("writing .wk/.gitignore: %w", err)
 			}
 
 			// Resolve API client

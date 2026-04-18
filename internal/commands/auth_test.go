@@ -47,13 +47,14 @@ func seedKeychainProfile(t *testing.T, p *auth.Profile, active bool) {
 	}
 }
 
-// seedProjectProfilesEnv writes a wk.toml + profiles.env into cwd with the
-// given profile name.
+// seedProjectProfilesEnv writes a .wk/wk.toml + .wk/profiles.env into cwd
+// with the given profile name.
 func seedProjectProfilesEnv(t *testing.T, cwd, name string) {
 	t.Helper()
-	os.WriteFile(filepath.Join(cwd, config.ProjectFile), []byte(`name = "test"`+"\n"), 0644)
+	os.MkdirAll(filepath.Join(cwd, config.ProjectDir), 0755)
+	os.WriteFile(config.ProjectConfigPath(cwd), []byte(`name = "test"`+"\n"), 0644)
 	body := "NAME=" + name + "\nREGION=us\nWORKSPACE=acme\nENVIRONMENT=ci\nTOKEN=tok\n"
-	os.WriteFile(filepath.Join(cwd, auth.ProfilesEnvFile), []byte(body), 0600)
+	os.WriteFile(auth.NewFileStore(cwd).Path, []byte(body), 0600)
 }
 
 func TestAuthSwitch_FileOnlyProfileErrors(t *testing.T) {
@@ -167,13 +168,16 @@ func TestComputeProfileName(t *testing.T) {
 	cases := []struct {
 		workspace, environment, region, want string
 	}{
-		// ADR-006 examples.
-		{"Acme Corp", "prod", "us", "acme-corp-prod"},
-		{"Acme Corp", "prod", "eu", "acme-corp-prod-eu"},
-		// Region suffix only for non-default region.
-		{"Acme", "dev", "us", "acme-dev"},
-		{"Acme", "dev", "", "acme-dev"},
-		{"Acme", "dev", "jp", "acme-dev-jp"},
+		// ADR-006 examples: region is always the leading component.
+		{"Acme Corp", "prod", "us", "us-acme-corp-prod"},
+		{"Acme Corp", "prod", "eu", "eu-acme-corp-prod"},
+		{"Acme", "dev", "us", "us-acme-dev"},
+		// Empty region falls back to config.DefaultRegion ("us").
+		{"Acme", "dev", "", "us-acme-dev"},
+		{"Acme", "dev", "jp", "jp-acme-dev"},
+		// Coverage for the two newly-added regions.
+		{"Acme", "prod", "il", "il-acme-prod"},
+		{"Acme", "prod", "cn", "cn-acme-prod"},
 	}
 	for _, c := range cases {
 		got := computeProfileName(c.workspace, c.environment, c.region)

@@ -48,15 +48,18 @@ func TestFindProjectRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// No wk.toml — should fail
+	// No .wk/wk.toml — should fail
 	_, err := FindProjectRoot(sub)
 	if err == nil {
-		t.Error("expected error when no wk.toml exists")
+		t.Error("expected error when no .wk/wk.toml exists")
 	}
 
-	// Create wk.toml in the root dir
+	// Create .wk/wk.toml in the root dir (ADR-005 Decision 5).
+	if err := os.MkdirAll(filepath.Join(dir, ProjectDir), 0755); err != nil {
+		t.Fatal(err)
+	}
 	cfg := &Config{Name: "test", Profile: "dev"}
-	if err := Save(filepath.Join(dir, ProjectFile), cfg); err != nil {
+	if err := Save(ProjectConfigPath(dir), cfg); err != nil {
 		t.Fatal(err)
 	}
 

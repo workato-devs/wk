@@ -2,11 +2,15 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/workato-devs/wk-cli-beta/internal/config"
+	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
 )
 
 // pollInterval is the delay between status checks when waiting for
@@ -16,6 +20,48 @@ const pollInterval = 2 * time.Second
 // implicitRootFolder is the Workato UI label for the workspace root.
 // It does not correspond to an actual API folder.
 const implicitRootFolder = "All projects"
+
+// folderIDForEntry returns the Workato folder ID for entry. If the entry
+// has a cached FolderID (non-zero), it is returned without any API calls.
+// Otherwise the path is resolved via the folder-hierarchy walk and the ID
+// is written back to wk.toml as a write-through cache (ADR-005 Decision 9).
+func (e *SyncEngine) folderIDForEntry(ctx context.Context, entry config.SyncEntry) (int, error) {
+	if entry.FolderID != 0 {
+		return entry.FolderID, nil
+	}
+	return e.resolveAndCache(ctx, entry.ServerPath)
+}
+
+// resolveAndCache walks the folder hierarchy to resolve serverPath and
+// persists the resulting ID to the matching [[sync]] entry in wk.toml.
+// Cache write failures are logged but non-fatal — the ID is still returned.
+func (e *SyncEngine) resolveAndCache(ctx context.Context, serverPath string) (int, error) {
+	id, err := e.resolveFolderID(ctx, serverPath)
+	if err != nil {
+		return 0, err
+	}
+	if e.config != nil {
+		for i := range e.config.Sync {
+			if e.config.Sync[i].ServerPath == serverPath {
+				e.config.Sync[i].FolderID = id
+				break
+			}
+		}
+	}
+	if e.projectRoot != "" && e.config != nil {
+		if err := config.Save(config.ProjectConfigPath(e.projectRoot), e.config); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not persist folder_id cache: %v\n", err)
+		}
+	}
+	return id, nil
+}
+
+// invalidFolderCacheErr reports whether err indicates that a cached folder_id
+// is stale (the API no longer knows the folder). ADR-005 Decision 9 says to
+// fall back to path resolution and retry in this case.
+func invalidFolderCacheErr(err error) bool {
+	return errors.Is(err, wkerrors.ErrAPINotFound)
+}
 
 // resolveFolderID walks the Workato folder hierarchy to find the folder
 // matching serverPath (e.g. "Recipes/Production/Integrations").
@@ -126,15 +172,28 @@ func readFileBytes(path string) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
-// findLocalFiles walks a directory and returns all non-meta file paths
-// relative to that directory.
+// relSlashes returns the path of target relative to base as a
+// forward-slash-separated string, regardless of OS separator.
+func relSlashes(base, target string) (string, error) {
+	rel, err := filepath.Rel(base, target)
+	if err != nil {
+		return "", err
+	}
+	return filepath.ToSlash(rel), nil
+}
+
+// findLocalFiles walks a directory and returns all file paths relative
+// to that directory, skipping the .wk/ tool directory if encountered.
 func findLocalFiles(dir string) ([]string, error) {
 	var files []string
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if info.IsDir() || IsMetaFile(info.Name()) {
+		if info.IsDir() {
+			if info.Name() == ".wk" {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		rel, err := filepath.Rel(dir, path)
