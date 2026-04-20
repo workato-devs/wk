@@ -83,12 +83,18 @@ func (e *SyncEngine) Push(entry config.SyncEntry, dryRun bool, preserveState boo
 		return nil, e.wrapFolderErr(err, entry, entry.FolderID)
 	}
 
-	// Upload; invalidate cache and retry once on 404.
+	// Upload; invalidate cache and retry once on 404. The retry predicate
+	// checks the fresh folderID (not entry.FolderID) because the entry
+	// comes in by value — when folderIDForEntry freshly resolves or
+	// creates a folder, the updated ID lives on e.config.Sync[i] and
+	// on folderID, not on the local copy. Using entry.FolderID here
+	// would silently skip the retry for any just-resolved entry (and
+	// the create branch makes this case common enough to matter).
 	origFolderID := folderID
 	retried := false
 	restartRecipes := preserveState
 	importID, err := e.packages.Import(ctx, folderID, zipData, restartRecipes)
-	if err != nil && entry.FolderID != 0 && invalidFolderCacheErr(err) {
+	if err != nil && folderID != 0 && invalidFolderCacheErr(err) {
 		if fresh, rerr := e.resolveAndCache(ctx, entry.ServerPath); rerr == nil {
 			folderID = fresh
 			retried = true

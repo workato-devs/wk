@@ -34,13 +34,15 @@ func resolveVerifyClient(cmd *cobra.Command, profileName string) (api.Client, er
 }
 
 // verifyServerPath walks the Workato folder hierarchy to confirm that
-// serverPath exists. On success returns the resolved leaf folder ID so
-// callers can populate the [[sync]] cache (ADR-007 Decision 7). Returns
-// 0 when serverPath resolves to the implicit workspace root.
-func verifyServerPath(cmd *cobra.Command, client api.Client, serverPath string) (int, error) {
+// serverPath exists. On success returns the resolved leaf folder so
+// callers can populate both folder_id AND project_id in the [[sync]]
+// cache (ADR-007 Decision 7; project_id is required by
+// DELETE /projects/{project_id}). Returns nil when serverPath resolves
+// to the implicit workspace root.
+func verifyServerPath(cmd *cobra.Command, client api.Client, serverPath string) (*api.Folder, error) {
 	parts := strings.Split(strings.Trim(serverPath, "/"), "/")
 	if len(parts) == 0 || parts[0] == "" {
-		return 0, fmt.Errorf("empty server path")
+		return nil, fmt.Errorf("empty server path")
 	}
 
 	// Strip implicit root folder "All projects" if present.
@@ -48,7 +50,7 @@ func verifyServerPath(cmd *cobra.Command, client api.Client, serverPath string) 
 		parts = parts[1:]
 	}
 	if len(parts) == 0 {
-		return 0, nil // root folder always exists
+		return nil, nil // root folder always exists
 	}
 
 	folders := client.Folders()
@@ -59,11 +61,11 @@ func verifyServerPath(cmd *cobra.Command, client api.Client, serverPath string) 
 	// by parent_id=nil would find nothing.
 	allFolders, err := folders.List(cmd.Context(), nil)
 	if err != nil {
-		return 0, fmt.Errorf("verifying server path: %w", err)
+		return nil, fmt.Errorf("verifying server path: %w", err)
 	}
 
 	var parentID *int
-	var leafID int
+	var leaf api.Folder
 	for _, name := range parts {
 		found := false
 		for _, f := range allFolders {
@@ -76,17 +78,17 @@ func verifyServerPath(cmd *cobra.Command, client api.Client, serverPath string) 
 			if parentID != nil && (f.ParentID == nil || *f.ParentID != *parentID) {
 				continue
 			}
+			leaf = f
 			id := f.ID
 			parentID = &id
-			leafID = id
 			found = true
 			break
 		}
 		if !found {
-			return 0, fmt.Errorf("server path %q not found: folder %q does not exist", serverPath, name)
+			return nil, fmt.Errorf("server path %q not found: folder %q does not exist", serverPath, name)
 		}
 	}
-	return leafID, nil
+	return &leaf, nil
 }
 
 func newInitCmd() *cobra.Command {
@@ -303,17 +305,19 @@ wk sync add/remove for incremental edits.`,
 				if err != nil {
 					return fmt.Errorf("--verify requires auth: %w", err)
 				}
-				// Populate folder_id cache during the walk so wk.toml lands
-				// fully adopted in one command (ADR-007 Decision 7). A leaf
-				// ID of 0 means the server path resolved to the workspace
-				// root — leave FolderID unset so omitempty keeps it out.
+				// Populate folder_id AND project_id cache during the walk
+				// so wk.toml lands fully adopted in one command (ADR-007
+				// Decision 7). A nil leaf means the server path resolved to
+				// the workspace root — leave IDs unset so omitempty keeps
+				// them out.
 				for i := range requested {
-					id, err := verifyServerPath(cmd, client, requested[i].ServerPath)
+					leaf, err := verifyServerPath(cmd, client, requested[i].ServerPath)
 					if err != nil {
 						return err
 					}
-					if id != 0 {
-						requested[i].FolderID = id
+					if leaf != nil {
+						requested[i].FolderID = leaf.ID
+						requested[i].ProjectID = leaf.ProjectID
 					}
 				}
 			}

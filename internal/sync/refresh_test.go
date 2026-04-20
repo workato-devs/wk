@@ -40,6 +40,10 @@ func (m *refreshMockFolders) Delete(_ context.Context, _ int) error {
 	return nil
 }
 
+func (m *refreshMockFolders) DeleteProject(_ context.Context, _ int) error {
+	return nil
+}
+
 func newRefreshEngine(cfg *config.Config, folders *refreshMockFolders) *SyncEngine {
 	return &SyncEngine{
 		config:  cfg,
@@ -275,6 +279,63 @@ func TestClassifyEntry_ListCacheDisabledCallsEachTime(t *testing.T) {
 	}
 	if folders.listCalls != 2 {
 		t.Errorf("listCalls = %d, want 2 (cache disabled → one List per entry)", folders.listCalls)
+	}
+}
+
+// TestClassifyEntry_CapturesProjectID: when a `found` classification
+// populates the cache, project_id must land alongside folder_id in
+// wk.toml. wk folders delete depends on project_id being present.
+func TestClassifyEntry_CapturesProjectID(t *testing.T) {
+	cfg := &config.Config{
+		Sync: []config.SyncEntry{{ServerPath: "MyProject"}},
+	}
+	engine := newRefreshEngine(cfg, &refreshMockFolders{
+		list: map[int][]api.Folder{
+			-1: {{ID: 100, Name: "MyProject", IsProject: true, ProjectID: 9001}},
+		},
+	})
+
+	result, err := engine.ClassifyEntry(context.Background(), cfg.Sync[0])
+	if err != nil {
+		t.Fatalf("ClassifyEntry: %v", err)
+	}
+	if result.State != RefreshStateFound {
+		t.Errorf("state = %q, want %q", result.State, RefreshStateFound)
+	}
+	if result.FolderID != 100 {
+		t.Errorf("result.FolderID = %d, want 100", result.FolderID)
+	}
+	if result.ProjectID != 9001 {
+		t.Errorf("result.ProjectID = %d, want 9001", result.ProjectID)
+	}
+	if cfg.Sync[0].FolderID != 100 || cfg.Sync[0].ProjectID != 9001 {
+		t.Errorf("cfg.Sync[0] = {%d, %d}, want {100, 9001}", cfg.Sync[0].FolderID, cfg.Sync[0].ProjectID)
+	}
+}
+
+// TestClassifyEntry_CurrentRefreshesProjectIDOnChange: even when the
+// folder_id is unchanged, a stale project_id must be refreshed. This
+// case is rare but possible — the server can flip is_project on a
+// folder without changing its id.
+func TestClassifyEntry_CurrentRefreshesProjectIDOnChange(t *testing.T) {
+	cfg := &config.Config{
+		Sync: []config.SyncEntry{{ServerPath: "MyProject", FolderID: 100, ProjectID: 0}},
+	}
+	engine := newRefreshEngine(cfg, &refreshMockFolders{
+		list: map[int][]api.Folder{
+			-1: {{ID: 100, Name: "MyProject", IsProject: true, ProjectID: 9001}},
+		},
+	})
+
+	result, err := engine.ClassifyEntry(context.Background(), cfg.Sync[0])
+	if err != nil {
+		t.Fatalf("ClassifyEntry: %v", err)
+	}
+	if result.State != RefreshStateCurrent {
+		t.Errorf("state = %q, want %q", result.State, RefreshStateCurrent)
+	}
+	if cfg.Sync[0].ProjectID != 9001 {
+		t.Errorf("cfg.Sync[0].ProjectID = %d, want 9001 (refreshed even on current)", cfg.Sync[0].ProjectID)
 	}
 }
 

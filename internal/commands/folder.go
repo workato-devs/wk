@@ -6,6 +6,8 @@ import (
 	"strconv"
 
 	"github.com/spf13/cobra"
+
+	"github.com/workato-devs/wk-cli-beta/internal/api"
 )
 
 func newFoldersCmd() *cobra.Command {
@@ -114,8 +116,13 @@ func newFoldersCreateCmd() *cobra.Command {
 func newFoldersDeleteCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "delete <id>",
-		Short: "Delete a folder",
-		Args:  requireArgs(1, "folder ID is required, e.g.: wk folders delete <id>"),
+		Short: "Delete a folder or project",
+		Long: `Delete a top-level Workato project or a nested folder. The Workato
+API uses separate endpoints — DELETE /projects/{id} for projects
+(is_project=true), DELETE /folders/{id} for plain folders. This
+command lists top-level folders first and routes to the correct
+endpoint based on the target's is_project flag.`,
+		Args: requireArgs(1, "folder ID is required, e.g.: wk folders delete <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
@@ -127,10 +134,39 @@ func newFoldersDeleteCmd() *cobra.Command {
 				return fmt.Errorf("invalid folder ID: %s", args[0])
 			}
 
+			// Projects are always top-level; a single list call at the
+			// workspace root resolves both is_project and project_id. If
+			// the target isn't in the root list it's a nested folder,
+			// which always routes to DELETE /folders/{id}.
+			topLevel, err := client.Folders().List(cmd.Context(), nil)
+			if err != nil {
+				return fmt.Errorf("listing top-level folders to determine type: %w", err)
+			}
+			var match *api.Folder
+			for i, f := range topLevel {
+				if f.ID == id {
+					match = &topLevel[i]
+					break
+				}
+			}
+
+			if match != nil && match.IsProject {
+				// DELETE /projects/{project_id} — not folder_id. The
+				// project_id is a separate identifier returned on the
+				// folder list response when is_project=true.
+				if match.ProjectID == 0 {
+					return fmt.Errorf("folder %d is a project but the API did not return project_id; cannot route delete", id)
+				}
+				if err := client.Folders().DeleteProject(cmd.Context(), match.ProjectID); err != nil {
+					return err
+				}
+				fmt.Fprintf(os.Stdout, "Project %d deleted (project_id=%d)\n", id, match.ProjectID)
+				return nil
+			}
+
 			if err := client.Folders().Delete(cmd.Context(), id); err != nil {
 				return err
 			}
-
 			fmt.Fprintf(os.Stdout, "Folder %d deleted\n", id)
 			return nil
 		},

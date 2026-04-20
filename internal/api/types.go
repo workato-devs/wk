@@ -43,11 +43,21 @@ type Connection struct {
 	UpdatedAt           time.Time `json:"updated_at"`
 }
 
-// Folder represents a Workato folder.
+// Folder represents a Workato folder. IsProject distinguishes top-level
+// projects from plain folders — the Workato workspace treats them as
+// the same resource shape on list, but delete routes differently:
+// projects require DELETE /projects/{project_id}; plain folders use
+// DELETE /folders/{id}.
+//
+// ProjectID is populated by the list response when IsProject is true
+// and is the identifier that DELETE /projects/... requires — distinct
+// from ID (the folder id) even when the folder IS a project.
 type Folder struct {
-	ID       int    `json:"id"`
-	Name     string `json:"name"`
-	ParentID *int   `json:"parent_id,omitempty"`
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	ParentID  *int   `json:"parent_id,omitempty"`
+	IsProject bool   `json:"is_project,omitempty"`
+	ProjectID int    `json:"project_id,omitempty"`
 }
 
 // Package represents an RLCM export/import package.
