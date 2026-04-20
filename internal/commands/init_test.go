@@ -45,36 +45,36 @@ func setupTestHome(t *testing.T) func() {
 	}
 }
 
-func TestInitLocalPathDefaults(t *testing.T) {
+func TestInitSyncFlagDefaults(t *testing.T) {
 	tests := []struct {
-		name       string
-		serverPath string
-		localPath  string
-		wantLocal  string
+		name      string
+		sync      string
+		wantLocal string
 	}{
 		{
-			name:       "defaults to dot",
-			serverPath: "Test",
-			localPath:  "",
-			wantLocal:  ".",
+			name:      "bare name defaults to ./<name>",
+			sync:      "Test",
+			wantLocal: "./Test",
 		},
 		{
-			name:       "nested server path defaults to dot",
-			serverPath: "Dev Team Testing/Gong.io API",
-			localPath:  "",
-			wantLocal:  ".",
+			name:      "nested server path uses last segment",
+			sync:      "Dev Team Testing/Gong.io API",
+			wantLocal: "./Gong.io API",
 		},
 		{
-			name:       "explicit local path preserved",
-			serverPath: "Test",
-			localPath:  "./custom",
-			wantLocal:  "./custom",
+			name:      "explicit local path preserved",
+			sync:      "Test:./custom",
+			wantLocal: "./custom",
 		},
 		{
-			name:       "trailing slash defaults to dot",
-			serverPath: "Test/Sub/",
-			localPath:  "",
-			wantLocal:  ".",
+			name:      "trailing slash uses last segment",
+			sync:      "Test/Sub/",
+			wantLocal: "./Sub",
+		},
+		{
+			name:      "All projects prefix stripped",
+			sync:      "All projects/Team/A",
+			wantLocal: "./A",
 		},
 	}
 
@@ -88,24 +88,19 @@ func TestInitLocalPathDefaults(t *testing.T) {
 			os.Chdir(dir)
 			defer os.Chdir(origDir)
 
-			args := []string{
-				"--name", "test-proj",
-				"--profile", "dev",
-				"--server-path", tt.serverPath,
-				"--json",
-			}
-			if tt.localPath != "" {
-				args = append(args, "--local-path", tt.localPath)
-			}
-
 			root := NewRootCmd()
 			root.AddCommand(newInitCmd())
-			root.SetArgs(append([]string{"init"}, args...))
+			root.SetArgs([]string{
+				"init",
+				"--name", "test-proj",
+				"--profile", "dev",
+				"--sync", tt.sync,
+				"--json",
+			})
 			if err := root.Execute(); err != nil {
 				t.Fatalf("init failed: %v", err)
 			}
 
-			// Init creates a container directory: <cwd>/test-proj/wk.toml
 			cfg, err := config.Load(config.ProjectConfigPath(filepath.Join(dir, "test-proj")))
 			if err != nil {
 				t.Fatalf("loading config: %v", err)
@@ -576,7 +571,12 @@ func TestInitOverwriteFlag(t *testing.T) {
 	}
 }
 
-func TestInitOverwritePreservesSyncEntries(t *testing.T) {
+// TestInitOverwriteReplacesSyncEntries pins the ADR-007 semantic: --overwrite
+// means replace. Existing [[sync]] entries are dropped, not preserved. Prior
+// behavior (preservation, the Issue #29 workaround) was obsoleted by the
+// --project/--projects-dir/--sync flag surface, which lets developers declare
+// multi-entry configs directly rather than through hand-editing.
+func TestInitOverwriteReplacesSyncEntries(t *testing.T) {
 	cleanupHome := setupTestHome(t)
 	defer cleanupHome()
 
@@ -585,33 +585,28 @@ func TestInitOverwritePreservesSyncEntries(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	// First init creates the project.
 	root := NewRootCmd()
 	root.AddCommand(newInitCmd())
-	root.SetArgs([]string{"init", "--name", "multiproj", "--profile", "dev", "--json"})
+	root.SetArgs([]string{"init", "--name", "replaceproj", "--profile", "dev",
+		"--sync", "Team/Old:./old", "--json"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("first init failed: %v", err)
 	}
 
-	// Hand-edit wk.toml to add multiple sync entries — this mirrors the
-	// current workaround for issue #29 (single-entry limit on init).
-	configPath := config.ProjectConfigPath(filepath.Join(dir, "multiproj"))
+	configPath := config.ProjectConfigPath(filepath.Join(dir, "replaceproj"))
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		t.Fatalf("loading config: %v", err)
 	}
-	cfg.Sync = []config.SyncEntry{
-		{ServerPath: "Team/A", LocalPath: "a"},
-		{ServerPath: "Team/B", LocalPath: "b"},
-	}
+	cfg.Sync = append(cfg.Sync, config.SyncEntry{ServerPath: "Team/HandEdited", LocalPath: "./handedit"})
 	if err := config.Save(configPath, cfg); err != nil {
 		t.Fatalf("saving edited config: %v", err)
 	}
 
-	// Re-init with --overwrite — without preservation this would drop both entries.
 	root = NewRootCmd()
 	root.AddCommand(newInitCmd())
-	root.SetArgs([]string{"init", "--name", "multiproj", "--profile", "dev", "--overwrite", "--json"})
+	root.SetArgs([]string{"init", "--name", "replaceproj", "--profile", "dev", "--overwrite",
+		"--sync", "Team/New:./new", "--json"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("overwrite init failed: %v", err)
 	}
@@ -620,49 +615,12 @@ func TestInitOverwritePreservesSyncEntries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reloading config: %v", err)
 	}
-	if len(reloaded.Sync) != 2 {
-		t.Fatalf("sync entries after overwrite = %d, want 2 (should have been preserved)", len(reloaded.Sync))
+	if len(reloaded.Sync) != 1 {
+		t.Fatalf("sync entries after overwrite = %d, want 1 (only Team/New): %+v",
+			len(reloaded.Sync), reloaded.Sync)
 	}
-	paths := map[string]bool{}
-	for _, s := range reloaded.Sync {
-		paths[s.ServerPath] = true
-	}
-	if !paths["Team/A"] || !paths["Team/B"] {
-		t.Errorf("preserved entries missing: %+v", reloaded.Sync)
-	}
-}
-
-func TestInitOverwriteAppendsNewServerPath(t *testing.T) {
-	cleanupHome := setupTestHome(t)
-	defer cleanupHome()
-
-	dir := t.TempDir()
-	origDir, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(origDir)
-
-	// First init with one --server-path.
-	root := NewRootCmd()
-	root.AddCommand(newInitCmd())
-	root.SetArgs([]string{"init", "--name", "addproj", "--profile", "dev", "--server-path", "Team/A", "--json"})
-	if err := root.Execute(); err != nil {
-		t.Fatalf("first init failed: %v", err)
-	}
-
-	// Re-init with --overwrite and a different --server-path — should keep A and add B.
-	root = NewRootCmd()
-	root.AddCommand(newInitCmd())
-	root.SetArgs([]string{"init", "--name", "addproj", "--profile", "dev", "--overwrite", "--server-path", "Team/B", "--json"})
-	if err := root.Execute(); err != nil {
-		t.Fatalf("overwrite init failed: %v", err)
-	}
-
-	cfg, err := config.Load(config.ProjectConfigPath(filepath.Join(dir, "addproj")))
-	if err != nil {
-		t.Fatalf("loading config: %v", err)
-	}
-	if len(cfg.Sync) != 2 {
-		t.Fatalf("sync entries = %d, want 2 (original preserved + new appended): %+v", len(cfg.Sync), cfg.Sync)
+	if reloaded.Sync[0].ServerPath != "Team/New" {
+		t.Errorf("entry 0 server_path = %q, want Team/New", reloaded.Sync[0].ServerPath)
 	}
 }
 
@@ -808,5 +766,145 @@ func TestInitActiveProfileMismatch(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "does not match") {
 		t.Errorf("error = %q, want active profile mismatch message", err.Error())
+	}
+}
+
+// TestInitProjectFlagMajorityCase covers the ADR-007 "happy path":
+// `wk init --name X --project foo --project bar` at a clean directory
+// scaffolds a container with two top-level Workato projects at the
+// container root. Validates the default --projects-dir of "." composes
+// correctly with repeatable --project flags.
+func TestInitProjectFlagMajorityCase(t *testing.T) {
+	cleanupHome := setupTestHome(t)
+	defer cleanupHome()
+
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	root := NewRootCmd()
+	root.AddCommand(newInitCmd())
+	root.SetArgs([]string{
+		"init",
+		"--name", "my-project",
+		"--profile", "dev",
+		"--project", "foo",
+		"--project", "bar",
+		"--json",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	cfg, err := config.Load(config.ProjectConfigPath(filepath.Join(dir, "my-project")))
+	if err != nil {
+		t.Fatalf("loading config: %v", err)
+	}
+	if len(cfg.Sync) != 2 {
+		t.Fatalf("Sync len = %d, want 2 (%+v)", len(cfg.Sync), cfg.Sync)
+	}
+	want := map[string]string{
+		"foo": "foo",
+		"bar": "bar",
+	}
+	for _, e := range cfg.Sync {
+		if got, ok := want[e.ServerPath]; !ok {
+			t.Errorf("unexpected server_path %q", e.ServerPath)
+		} else if e.LocalPath != got {
+			t.Errorf("entry %q local_path = %q, want %q", e.ServerPath, e.LocalPath, got)
+		}
+	}
+}
+
+// TestInitProjectsDirDiscovery covers the monorepo-shaped flow from ADR-007:
+// `wk init --name X --projects-dir ./workato/recipes` walks the directory
+// one level deep and creates one entry per non-hidden subdirectory.
+// --projects-dir is interpreted *relative to the container* (Decision 1),
+// so the on-disk walk resolves to <container>/<projects-dir>/ and each
+// resulting local_path stays container-relative.
+func TestInitProjectsDirDiscovery(t *testing.T) {
+	cleanupHome := setupTestHome(t)
+	defer cleanupHome()
+
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	// Workato asset subdirs need to already exist at <container>/<projects-dir>
+	// before init walks. Mirrors the dewy-resort workflow: the developer
+	// clones the repo, then runs `wk init` with --projects-dir pointing at
+	// the existing recipe tree.
+	container := filepath.Join(dir, "monorepo")
+	recipeDir := filepath.Join(container, "workato", "recipes")
+	for _, sub := range []string{"atomic-salesforce", "atomic-stripe", ".hidden"} {
+		if err := os.MkdirAll(filepath.Join(recipeDir, sub), 0755); err != nil {
+			t.Fatalf("mkdir %s: %v", sub, err)
+		}
+	}
+
+	root := NewRootCmd()
+	root.AddCommand(newInitCmd())
+	root.SetArgs([]string{
+		"init",
+		"--name", "monorepo",
+		"--profile", "dev",
+		"--projects-dir", "./workato/recipes",
+		"--json",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	cfg, err := config.Load(config.ProjectConfigPath(container))
+	if err != nil {
+		t.Fatalf("loading config: %v", err)
+	}
+	if len(cfg.Sync) != 2 {
+		t.Fatalf("Sync len = %d, want 2 (hidden dir should be skipped): %+v", len(cfg.Sync), cfg.Sync)
+	}
+	wantLocal := map[string]string{
+		"atomic-salesforce": filepath.Join("workato/recipes", "atomic-salesforce"),
+		"atomic-stripe":     filepath.Join("workato/recipes", "atomic-stripe"),
+	}
+	for _, e := range cfg.Sync {
+		want, ok := wantLocal[e.ServerPath]
+		if !ok {
+			t.Errorf("unexpected server_path %q", e.ServerPath)
+			continue
+		}
+		if e.LocalPath != want {
+			t.Errorf("entry %q local_path = %q, want %q (container-relative, no container-name prefix)",
+				e.ServerPath, e.LocalPath, want)
+		}
+	}
+}
+
+// TestInitRejectsConflictingServerPaths pins Decision 5 rule 2: declaring
+// the same server_path with different local_paths in a single invocation
+// is a hard error.
+func TestInitRejectsConflictingServerPaths(t *testing.T) {
+	cleanupHome := setupTestHome(t)
+	defer cleanupHome()
+
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	root := NewRootCmd()
+	root.AddCommand(newInitCmd())
+	root.SetArgs([]string{
+		"init",
+		"--name", "conflict-proj",
+		"--profile", "dev",
+		"--project", "foo",
+		"--sync", "foo:./somewhere-else",
+		"--json",
+	})
+	err := root.Execute()
+	if err == nil || !strings.Contains(err.Error(), "conflicting local paths") {
+		t.Errorf("err = %v, want 'conflicting local paths'", err)
 	}
 }

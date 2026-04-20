@@ -27,10 +27,11 @@ func TestShortFlagsResolveOnAuthLogin(t *testing.T) {
 }
 
 func TestShortFlagsResolveOnInit(t *testing.T) {
+	// -s / -l were retired alongside --server-path / --local-path in ADR-007
+	// Decision 4; they are deliberately left unassigned for now (a short flag
+	// earns its slot by being requested, not by being available).
 	want := map[string]string{
 		"n": "name",
-		"s": "server-path",
-		"l": "local-path",
 		"o": "overwrite",
 	}
 	cmd := newInitCmd()
@@ -39,6 +40,11 @@ func TestShortFlagsResolveOnInit(t *testing.T) {
 			t.Errorf("init: -%s (expected alias for --%s) not registered", short, long)
 		} else if f.Name != long {
 			t.Errorf("init: -%s aliases --%s, want --%s", short, f.Name, long)
+		}
+	}
+	for _, retired := range []string{"s", "l"} {
+		if f := cmd.Flags().ShorthandLookup(retired); f != nil {
+			t.Errorf("init: -%s should be unassigned after ADR-007 Decision 4, got alias for --%s", retired, f.Name)
 		}
 	}
 }

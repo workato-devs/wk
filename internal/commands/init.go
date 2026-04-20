@@ -92,9 +92,7 @@ func verifyServerPath(cmd *cobra.Command, client api.Client, serverPath string) 
 func newInitCmd() *cobra.Command {
 	var (
 		flagName        string
-		flagServerPath  string
-		flagLocalPath   string
-		flagSyncMulti   []string
+		syncFlags       SyncEntryFlags
 		flagVerify      bool
 		flagInitNoInput bool
 		flagOverwrite   bool
@@ -105,18 +103,35 @@ func newInitCmd() *cobra.Command {
 		Short: "Initialize a new wk project",
 		Long: `Create a new wk project container in the current directory.
 
-The layout is:
+Layout after 'wk init --name <container>' from directory X:
 
-    <cwd>/<name>/
-    ├── .wk/
-    │   ├── wk.toml        (project config)
-    │   └── .gitignore     (self-ignores .wk/ contents; CLI never touches the
-    │                       project-root .gitignore)
-    └── ...                (asset directories populated by pull/clone)
+    X/
+    └── <container>/              (the wk project, named by --name)
+        ├── .wk/                  (CLI state, gitignored per ADR-005)
+        │   ├── wk.toml
+        │   └── .gitignore
+        ├── <project-a>/          (each declared Workato project,
+        ├── <project-b>/           one level inside the container)
+        └── ...
+
+Declare Workato projects with (in decision-flow order):
+
+  1. --project <name>              name-based, repeatable. Majority case.
+  2. --projects-dir <relpath>      discovery when used alone (walks one level
+                                   deep, picks up non-hidden subdirectories)
+                                   or local_path prefix when paired with
+                                   --project. Default: "." (container root).
+  3. --sync SERVER[:LOCAL]         fine-grained single mapping; use for nested
+                                   server paths or custom local paths.
+
+Pass --verify to validate every declared server-path against the workspace
+and cache the resolved folder_id in wk.toml — the recommended mode when
+adopting a project whose server folders already exist.
 
 Non-interactive mode (detected via --json, --no-input, or a non-TTY stdin)
 requires --name and --profile explicitly, and requires --overwrite when
-replacing an existing project. Mirrors the contract used by 'wk auth login'.`,
+replacing an existing project. --overwrite replaces [[sync]] entries — use
+wk sync add/remove for incremental edits.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
@@ -234,7 +249,9 @@ replacing an existing project. Mirrors the contract used by 'wk auth login'.`,
 
 			// Check if target already contains a .wk/wk.toml. ADR-005 Decision 2:
 			// interactive prompts for overwrite; non-interactive requires --overwrite.
-			var existingCfg *config.Config
+			// --overwrite replaces wk.toml in full (ADR-007): existing [[sync]]
+			// entries are dropped since --project/--projects-dir/--sync can now
+			// express multi-entry configs directly.
 			if _, err := os.Stat(configPath); err == nil {
 				if !flagOverwrite {
 					if !interactive {
@@ -247,17 +264,6 @@ replacing an existing project. Mirrors the contract used by 'wk auth login'.`,
 					if answer != "y" && answer != "yes" {
 						return fmt.Errorf("aborted: existing project at %s not overwritten", configPath)
 					}
-				}
-				// Load the existing config so we can preserve [[sync]] entries
-				// across overwrite — init's flags can express at most one entry,
-				// and silently discarding multi-entry configs is a data-loss
-				// footgun (issue #29). See ADR-005 "Related: Issue #29".
-				if cfg, lerr := config.Load(configPath); lerr == nil {
-					existingCfg = cfg
-				} else {
-					fmt.Fprintf(os.Stderr,
-						"warning: could not parse existing %s; overwriting from scratch: %v\n",
-						configPath, lerr)
 				}
 			}
 
@@ -284,42 +290,13 @@ replacing an existing project. Mirrors the contract used by 'wk auth login'.`,
 				cfg.Email = resolvedProfile.Email
 			}
 
-			// Preserve existing sync entries when overwriting. Without this,
-			// a developer who hand-edited extra [[sync]] blocks (the current
-			// workaround for the single-entry limitation in issue #29) would
-			// silently lose them on --overwrite.
-			if existingCfg != nil && len(existingCfg.Sync) > 0 {
-				cfg.Sync = append(cfg.Sync, existingCfg.Sync...)
-				if !flagJSON {
-					fmt.Fprintf(os.Stderr,
-						"Preserved %d existing [[sync]] entr%s from %s\n",
-						len(existingCfg.Sync), pluralY(len(existingCfg.Sync)), configPath)
-				}
-			}
-
-			// Collect requested new entries from both the legacy
-			// --server-path/--local-path shorthand and the repeatable --sync
-			// flag. Both forms can be used together; all entries go through
-			// the same dedup + optional --verify pass.
-			var requested []config.SyncEntry
-			if flagServerPath != "" {
-				localPath := flagLocalPath
-				if localPath == "" {
-					localPath = "."
-				}
-				requested = append(requested, config.SyncEntry{
-					ServerPath: flagServerPath,
-					LocalPath:  localPath,
-				})
-			} else if flagLocalPath != "" {
-				return fmt.Errorf("--local-path requires --server-path (for multi-entry use --sync SERVER[:LOCAL])")
-			}
-			for _, raw := range flagSyncMulti {
-				entry, perr := parseSyncFlag(raw)
-				if perr != nil {
-					return perr
-				}
-				requested = append(requested, entry)
+			// Assemble requested entries from the unified sync-entry flag
+			// surface (ADR-007 Decisions 1-5). Shared with `wk sync add`.
+			// Path-traversal guard and same-server-path conflict checks run
+			// inside AssembleSyncEntries.
+			requested, err := AssembleSyncEntries(&syncFlags, targetDir)
+			if err != nil {
+				return err
 			}
 
 			if flagVerify && len(requested) > 0 {
@@ -384,10 +361,9 @@ replacing an existing project. Mirrors the contract used by 'wk auth login'.`,
 	// --profile / -p reach init via the persistent root flag (root.go). A
 	// local copy would shadow the inherited persistent pair and silently
 	// break -p on `wk init`.
-	cmd.Flags().StringVarP(&flagServerPath, "server-path", "s", "", "Initial sync server path (single-entry shorthand; pairs with --local-path)")
-	cmd.Flags().StringVarP(&flagLocalPath, "local-path", "l", "", "Initial sync local path (defaults to \".\"; only valid with --server-path)")
-	cmd.Flags().StringArrayVar(&flagSyncMulti, "sync", nil, "Add a [[sync]] entry SERVER_PATH[:LOCAL_PATH] (repeatable; for multi-entry projects)")
-	cmd.Flags().BoolVar(&flagVerify, "verify", false, "Validate every configured server-path exists on Workato before saving")
+	BindSyncEntryFlags(cmd, &syncFlags)
+	cmd.Flags().BoolVar(&flagVerify, "verify", false,
+		"Validate every declared server-path against Workato and cache the resolved folder_id in wk.toml (ADR-007 Decision 7)")
 	cmd.Flags().BoolVar(&flagInitNoInput, "no-input", false, "Force non-interactive mode (fail on missing required flags instead of prompting)")
 	cmd.Flags().BoolVarP(&flagOverwrite, "overwrite", "o", false, "Overwrite an existing project config without prompting (non-interactive mode)")
 
