@@ -45,10 +45,11 @@ type ConnectionListOptions struct {
 	PerPage  int
 }
 
-// FolderService defines operations on folders.
+// FolderService defines operations on folders. The Workato API does not
+// expose a single-folder-by-ID endpoint; callers that need to verify a
+// cached folder_id must walk the hierarchy via List and compare.
 type FolderService interface {
 	List(ctx context.Context, parentID *int) ([]Folder, error)
-	Get(ctx context.Context, id int) (*Folder, error)
 	Create(ctx context.Context, name string, parentID *int) (*Folder, error)
 	Delete(ctx context.Context, id int) error
 }

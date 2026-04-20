@@ -27,14 +27,6 @@ func (s *folderService) List(ctx context.Context, parentID *int) ([]Folder, erro
 	return result, nil
 }
 
-func (s *folderService) Get(ctx context.Context, id int) (*Folder, error) {
-	var folder Folder
-	if err := s.client.do(ctx, "GET", fmt.Sprintf("/folders/%d", id), nil, &folder); err != nil {
-		return nil, err
-	}
-	return &folder, nil
-}
-
 func (s *folderService) Create(ctx context.Context, name string, parentID *int) (*Folder, error) {
 	body := map[string]any{"name": name}
 	if parentID != nil {

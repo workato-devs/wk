@@ -21,6 +21,7 @@ content; the commands here manage the entries themselves.
 	}
 	cmd.AddCommand(newSyncAddCmd())
 	cmd.AddCommand(newSyncListCmd())
+	cmd.AddCommand(newSyncRefreshCmd())
 	cmd.AddCommand(newSyncRemoveCmd())
 	return cmd
 }

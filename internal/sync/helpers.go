@@ -63,6 +63,13 @@ func invalidFolderCacheErr(err error) bool {
 	return errors.Is(err, wkerrors.ErrAPINotFound)
 }
 
+// errPathNotResolved distinguishes "every List call succeeded but the
+// requested name was not present at the expected parent" from
+// API-level errors (auth, 5xx, network). Callers use errors.Is to
+// decide whether to classify an entry as not-found/stale vs. to
+// propagate the failure and halt a sweep.
+var errPathNotResolved = errors.New("folder path not resolved")
+
 // wrapFolderErr annotates a folder-resolution or API error with the sync
 // entry's server_path, cached folder_id, and (when available) the snapshot
 // workspace name, so developers can tell which [[sync]] entry failed and
@@ -107,7 +114,7 @@ func (e *SyncEngine) resolveFolderID(ctx context.Context, serverPath string) (in
 
 	var parentID *int
 	for _, name := range parts {
-		folders, err := e.folders.List(ctx, parentID)
+		folders, err := e.listFolders(ctx, parentID)
 		if err != nil {
 			return 0, fmt.Errorf("listing folders under %v: %w", parentID, err)
 		}
@@ -121,7 +128,7 @@ func (e *SyncEngine) resolveFolderID(ctx context.Context, serverPath string) (in
 			}
 		}
 		if !found {
-			return 0, fmt.Errorf("folder %q not found under parent %v", name, parentID)
+			return 0, fmt.Errorf("folder %q not found under parent %v: %w", name, parentID, errPathNotResolved)
 		}
 	}
 	return *parentID, nil
