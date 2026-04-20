@@ -295,33 +295,11 @@ func TestInitWithRepeatedSyncFlag(t *testing.T) {
 	}
 }
 
-func TestInitRejectsLocalPathWithoutServerPath(t *testing.T) {
-	cleanupHome := setupTestHome(t)
-	defer cleanupHome()
-	resetGlobalFlags(t)
-
-	dir := t.TempDir()
-	origDir, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(origDir)
-
-	root := NewRootCmd()
-	root.AddCommand(newInitCmd())
-	root.SetArgs([]string{
-		"init",
-		"--name", "solo",
-		"--profile", "dev",
-		"--local-path", "./lonely",
-		"--sync", "Recipes/Slack",
-		"--json",
-	})
-	err := root.Execute()
-	if err == nil || !strings.Contains(err.Error(), "--local-path requires --server-path") {
-		t.Errorf("err = %v, want '--local-path requires --server-path'", err)
-	}
-}
-
-func TestInitCombinesShorthandAndSyncFlag(t *testing.T) {
+// TestInitCombinesProjectAndSyncFlag verifies the ADR-007 flag surface lets
+// --project and --sync coexist in one invocation. Replaces the old
+// shorthand+sync combination test; the --server-path/--local-path shorthand
+// was removed in ADR-007 Decision 4.
+func TestInitCombinesProjectAndSyncFlag(t *testing.T) {
 	cleanupHome := setupTestHome(t)
 	defer cleanupHome()
 	resetGlobalFlags(t)
@@ -337,8 +315,7 @@ func TestInitCombinesShorthandAndSyncFlag(t *testing.T) {
 		"init",
 		"--name", "mix-proj",
 		"--profile", "dev",
-		"--server-path", "Recipes/Primary",
-		"--local-path", "./primary",
+		"--project", "primary",
 		"--sync", "Recipes/Secondary:./secondary",
 		"--json",
 	})
