@@ -53,10 +53,17 @@ type MCPConfig struct {
 // non-zero, sync operations skip the folder-hierarchy API walk. The
 // sync engine populates it on first resolution (write-through cache)
 // and invalidates + re-resolves on API 404. See ADR-005 Decision 9.
+//
+// ProjectID caches the distinct project identifier returned by the
+// Workato folders API when the target folder is a project
+// (is_project=true). Required for DELETE /projects/{project_id}, which
+// takes the project ID rather than the folder ID. Zero when the entry
+// points at a plain folder (not a project).
 type SyncEntry struct {
 	ServerPath string   `toml:"server_path"`
 	LocalPath  string   `toml:"local_path"`
 	FolderID   int      `toml:"folder_id,omitempty"`
+	ProjectID  int      `toml:"project_id,omitempty"`
 	Include    []string `toml:"include,omitempty"`
 }
 

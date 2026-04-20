@@ -61,12 +61,13 @@ within one invocation are flagged as errors.`,
 					return fmt.Errorf("--verify requires auth: %w", verr)
 				}
 				for i := range requested {
-					id, err := verifyServerPath(cmd, client, requested[i].ServerPath)
+					leaf, err := verifyServerPath(cmd, client, requested[i].ServerPath)
 					if err != nil {
 						return err
 					}
-					if id != 0 {
-						requested[i].FolderID = id
+					if leaf != nil {
+						requested[i].FolderID = leaf.ID
+						requested[i].ProjectID = leaf.ProjectID
 					}
 				}
 			}

@@ -42,3 +42,10 @@ func (s *folderService) Create(ctx context.Context, name string, parentID *int) 
 func (s *folderService) Delete(ctx context.Context, id int) error {
 	return s.client.do(ctx, "DELETE", fmt.Sprintf("/folders/%d", id), nil, nil)
 }
+
+// DeleteProject removes a top-level project via DELETE /projects/{id}.
+// The Workato folders DELETE endpoint does not handle projects;
+// callers must route by Folder.IsProject.
+func (s *folderService) DeleteProject(ctx context.Context, id int) error {
+	return s.client.do(ctx, "DELETE", fmt.Sprintf("/projects/%d", id), nil, nil)
+}

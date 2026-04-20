@@ -67,7 +67,7 @@ func TestStructFieldCoverage(t *testing.T) {
 			name:       "Folder",
 			structType: reflect.TypeOf(Folder{}),
 			expectedFields: []string{
-				"id", "name", "parent_id",
+				"id", "name", "parent_id", "is_project", "project_id",
 			},
 		},
 		{

@@ -97,13 +97,31 @@ func newPushCmd() *cobra.Command {
 		flagDryRun        bool
 		flagPreserveState bool
 		flagSkipHooks     bool
+		flagNoCreate      bool
+		flagCreatePath    bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "push",
 		Short: "Push local changes to remote workspace",
-		Long:  "Upload modified local assets to the Workato workspace.",
+		Long: `Upload modified local assets to the Workato workspace.
+
+When an entry's server_path does not yet exist on the workspace, push
+creates it (ADR-007 Decision 12). Gating:
+
+  --no-create        Disable auto-create entirely. Missing folders error.
+                     Recommended for CI / production deploys.
+  --create-path      Create every missing segment of a nested path, not
+                     just bare top-level names. Opt-in for deep hierarchies.
+
+Both gates are mutually exclusive. By default, a bare server_path
+(no slashes) is auto-created on first push; a nested path that does
+not resolve errors unless --create-path is passed.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if flagNoCreate && flagCreatePath {
+				return fmt.Errorf("--no-create and --create-path are mutually exclusive")
+			}
+
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
 				return err
@@ -132,6 +150,15 @@ func newPushCmd() *cobra.Command {
 			}
 
 			engine := sync.NewSyncEngine(rctx.ProjectRoot, rctx.Config, client)
+			switch {
+			case flagNoCreate:
+				engine.SetCreateMode(sync.CreateModeNever)
+			case flagCreatePath:
+				engine.SetCreateMode(sync.CreateModeAnyPath)
+			default:
+				engine.SetCreateMode(sync.CreateModeBareNames)
+			}
+
 			var allResults []sync.PushResult
 			for _, entry := range entries {
 				results, err := engine.Push(entry, flagDryRun, flagPreserveState)
@@ -139,6 +166,29 @@ func newPushCmd() *cobra.Command {
 					return err
 				}
 				allResults = append(allResults, results...)
+			}
+
+			created := engine.FoldersCreated()
+
+			// Loud creation reporting (ADR-007 Decision 14). stderr so it
+			// stays visible even when stdout is piped to a file or tool.
+			if !flagJSON && !rctx.Quiet {
+				for _, fc := range created {
+					fmt.Fprintf(os.Stderr, "Created server folder %q (folder_id=%d)\n", fc.ServerPath, fc.FolderID)
+				}
+			}
+
+			if flagJSON {
+				// Both fields emit as "[]" not "null" when empty so
+				// scripts can destructure without special-casing.
+				if allResults == nil {
+					allResults = []sync.PushResult{}
+				}
+				payload := map[string]any{
+					"folders_created": created,
+					"import_results":  allResults,
+				}
+				return rctx.Formatter.Format(os.Stdout, payload)
 			}
 
 			if len(allResults) == 0 {
@@ -165,6 +215,8 @@ func newPushCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "Show what would be pushed without uploading")
 	cmd.Flags().BoolVar(&flagPreserveState, "preserve-state", true, "Preserve recipe active state on import")
 	cmd.Flags().BoolVar(&flagSkipHooks, "skip-hooks", false, "Skip plugin pre-push hooks")
+	cmd.Flags().BoolVar(&flagNoCreate, "no-create", false, "Error instead of auto-creating missing server folders (ADR-007 Decision 13)")
+	cmd.Flags().BoolVar(&flagCreatePath, "create-path", false, "Create every missing segment of a nested server_path (not just bare names)")
 
 	return cmd
 }

@@ -9,6 +9,40 @@ import (
 	"github.com/workato-devs/wk-cli-beta/internal/config"
 )
 
+// CreateMode controls folderIDForEntry's fallback behavior when the
+// hierarchy walk fails to resolve an entry's server_path (ADR-007
+// Decision 13). Default (zero value) is CreateModeBareNames.
+type CreateMode int
+
+const (
+	// CreateModeBareNames creates a missing top-level folder when the
+	// server_path has no slashes — the greenfield pattern. Nested paths
+	// still error; auto-creating a multi-level tree on first push is
+	// more likely to mask a typo than to match intent.
+	CreateModeBareNames CreateMode = iota
+
+	// CreateModeNever disables auto-create entirely. Any missing folder
+	// surfaces as an error. The --no-create CI escape hatch.
+	CreateModeNever
+
+	// CreateModeAnyPath creates missing folders at any depth, walking
+	// parents and creating each segment in order. The --create-path
+	// escape hatch for deliberately spinning up a nested hierarchy.
+	CreateModeAnyPath
+)
+
+// FolderCreated records one server-side folder creation triggered by
+// push's resolve-then-create branch (ADR-007 Decision 14). One record
+// per API call — under --create-path a single entry may produce
+// multiple records (one per missing segment). ProjectID is non-zero
+// when the API marked the created folder as a project (is_project=true);
+// it is the separate identifier required by DELETE /projects/{project_id}.
+type FolderCreated struct {
+	ServerPath string `json:"server_path"`
+	FolderID   int    `json:"folder_id"`
+	ProjectID  int    `json:"project_id,omitempty"`
+}
+
 // SyncEngine coordinates pull, push, status, and diff operations
 // between the local project directory and the Workato workspace.
 type SyncEngine struct {
@@ -25,6 +59,17 @@ type SyncEngine struct {
 	// same folder list N times. Keys are parent_id (-1 for the implicit
 	// workspace root).
 	listCache map[int][]api.Folder
+
+	// createMode controls folderIDForEntry's fallback when the walk
+	// returns errPathNotResolved. Zero value = CreateModeBareNames.
+	// Set by the push command after flag parsing.
+	createMode CreateMode
+
+	// foldersCreated accumulates server-folder creations from push's
+	// resolve-then-create branch so the command layer can report them
+	// loudly (ADR-007 Decision 14). Reset is caller-scoped — engines
+	// are per-command-run, so a fresh one always starts empty.
+	foldersCreated []FolderCreated
 }
 
 // EnableFolderListCache turns on per-parent List memoization for this
@@ -35,6 +80,42 @@ func (e *SyncEngine) EnableFolderListCache() {
 	if e.listCache == nil {
 		e.listCache = make(map[int][]api.Folder)
 	}
+}
+
+// SetCreateMode configures how folderIDForEntry handles a failed walk
+// for uncached entries. Call once during command setup, after flag
+// parsing. Default (zero value) is CreateModeBareNames.
+func (e *SyncEngine) SetCreateMode(mode CreateMode) {
+	e.createMode = mode
+}
+
+// FoldersCreated returns the server-folder creations that have
+// happened during this engine's lifetime. Reset is caller-scoped: a
+// fresh engine always starts empty. Safe to call once after all Push
+// invocations complete.
+//
+// Always returns a non-nil slice so JSON consumers see "[]" rather
+// than "null" when nothing was created — keeps scripts that destructure
+// folders_created from having to special-case the empty case.
+func (e *SyncEngine) FoldersCreated() []FolderCreated {
+	if e.foldersCreated == nil {
+		return []FolderCreated{}
+	}
+	return e.foldersCreated
+}
+
+// invalidateListCacheFor drops the cached folder list for parentID
+// after a create under that parent. Subsequent resolves in this sweep
+// will see the new folder. No-op when the cache is disabled.
+func (e *SyncEngine) invalidateListCacheFor(parentID *int) {
+	if e.listCache == nil {
+		return
+	}
+	key := -1
+	if parentID != nil {
+		key = *parentID
+	}
+	delete(e.listCache, key)
 }
 
 // listFolders is the cache-aware wrapper around e.folders.List. When the

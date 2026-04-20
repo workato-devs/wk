@@ -48,10 +48,15 @@ type ConnectionListOptions struct {
 // FolderService defines operations on folders. The Workato API does not
 // expose a single-folder-by-ID endpoint; callers that need to verify a
 // cached folder_id must walk the hierarchy via List and compare.
+//
+// Projects (is_project == true) use a separate DELETE endpoint and must
+// go through DeleteProject; plain folders use Delete. Callers inspect
+// Folder.IsProject from List results to route appropriately.
 type FolderService interface {
 	List(ctx context.Context, parentID *int) ([]Folder, error)
 	Create(ctx context.Context, name string, parentID *int) (*Folder, error)
 	Delete(ctx context.Context, id int) error
+	DeleteProject(ctx context.Context, id int) error
 }
 
 // PackageService defines operations on RLCM packages (export/import).

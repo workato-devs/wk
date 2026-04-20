@@ -43,12 +43,15 @@ const (
 // ServerPath / LocalPath come from the incoming entry; FolderID is
 // either the resolved ID (found / current / repaired) or the cached ID
 // from before classification (not-found, so the developer can still
-// see what the local wk.toml had). Message carries a human detail
-// string for repaired / not-found; empty for found / current.
+// see what the local wk.toml had). ProjectID mirrors the same policy
+// for the distinct project identifier (populated when the folder is a
+// project, zero otherwise). Message carries a human detail string for
+// repaired / not-found; empty for found / current.
 type RefreshResult struct {
 	ServerPath string       `json:"server_path"`
 	LocalPath  string       `json:"local_path"`
 	FolderID   int          `json:"folder_id,omitempty"`
+	ProjectID  int          `json:"project_id,omitempty"`
 	State      RefreshState `json:"state"`
 	Message    string       `json:"message,omitempty"`
 }
@@ -72,9 +75,10 @@ func (e *SyncEngine) ClassifyEntry(ctx context.Context, entry config.SyncEntry) 
 		ServerPath: entry.ServerPath,
 		LocalPath:  entry.LocalPath,
 		FolderID:   entry.FolderID,
+		ProjectID:  entry.ProjectID,
 	}
 
-	id, err := e.resolveFolderID(ctx, entry.ServerPath)
+	f, err := e.resolveFolder(ctx, entry.ServerPath)
 	if err != nil {
 		if !errors.Is(err, errPathNotResolved) {
 			return RefreshResult{}, fmt.Errorf("resolving %q: %w", entry.ServerPath, err)
@@ -87,35 +91,34 @@ func (e *SyncEngine) ClassifyEntry(ctx context.Context, entry config.SyncEntry) 
 		}
 		return result, nil
 	}
-
-	if entry.FolderID == 0 {
-		result.State = RefreshStateFound
-		result.FolderID = id
-		e.writeCachedFolderID(entry.ServerPath, id)
-		return result, nil
-	}
-	if entry.FolderID == id {
+	if f == nil {
 		result.State = RefreshStateCurrent
 		return result, nil
 	}
 
-	result.State = RefreshStateRepaired
-	result.FolderID = id
-	result.Message = fmt.Sprintf("cached folder_id changed from %d to %d", entry.FolderID, id)
-	e.writeCachedFolderID(entry.ServerPath, id)
-	return result, nil
-}
-
-// writeCachedFolderID updates the in-memory config slot for the
-// matching [[sync]] entry. Callers batch config.Save once per sweep.
-func (e *SyncEngine) writeCachedFolderID(serverPath string, id int) {
-	if e.config == nil {
-		return
+	if entry.FolderID == 0 {
+		result.State = RefreshStateFound
+		result.FolderID = f.ID
+		result.ProjectID = f.ProjectID
+		e.writeCachedIDs(entry.ServerPath, f.ID, f.ProjectID)
+		return result, nil
 	}
-	for i := range e.config.Sync {
-		if e.config.Sync[i].ServerPath == serverPath {
-			e.config.Sync[i].FolderID = id
-			return
+	if entry.FolderID == f.ID {
+		result.State = RefreshStateCurrent
+		// Even on current, keep project_id in sync — the server folder
+		// may have switched is_project status without changing its id
+		// (edge but possible). Cheap update; keeps cache truthful.
+		if entry.ProjectID != f.ProjectID {
+			result.ProjectID = f.ProjectID
+			e.writeCachedIDs(entry.ServerPath, f.ID, f.ProjectID)
 		}
+		return result, nil
 	}
+
+	result.State = RefreshStateRepaired
+	result.FolderID = f.ID
+	result.ProjectID = f.ProjectID
+	result.Message = fmt.Sprintf("cached folder_id changed from %d to %d", entry.FolderID, f.ID)
+	e.writeCachedIDs(entry.ServerPath, f.ID, f.ProjectID)
+	return result, nil
 }
