@@ -22,10 +22,6 @@ func (m *mockFolderService) List(_ context.Context, parentID *int) ([]api.Folder
 	return m.folders[key], nil
 }
 
-func (m *mockFolderService) Get(_ context.Context, _ int) (*api.Folder, error) {
-	return nil, nil
-}
-
 func (m *mockFolderService) Create(_ context.Context, _ string, _ *int) (*api.Folder, error) {
 	return nil, nil
 }
