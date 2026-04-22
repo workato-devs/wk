@@ -52,7 +52,6 @@ available during the beta period:
 
 ## Known rough edges
 
-- **Go 1.23+** is required for `go install`
 - **`connections test`** (health-check a connection) is not implemented
 - **Linter plugin and visualizer extension** are installed separately from the
   CLI — see the [toolkit setup](./README.md#setting-up-the-toolkit)

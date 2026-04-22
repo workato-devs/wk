@@ -43,10 +43,39 @@ dependency, plus the agent-workflow capabilities above.
 
 ### 1. Install the CLI
 
-Requires [Go 1.23+](https://go.dev/dl/).
+Download the archive for your platform from the
+[releases page](https://github.com/workato-devs/wk-cli-beta/releases).
+
+| OS | Architecture | Archive |
+|----|-------------|---------|
+| macOS | Apple Silicon (M1+) | `wk_VERSION_Darwin_arm64.tar.gz` |
+| macOS | Intel | `wk_VERSION_Darwin_x86_64.tar.gz` |
+| Linux | x86_64 | `wk_VERSION_Linux_x86_64.tar.gz` |
+| Linux | ARM64 | `wk_VERSION_Linux_arm64.tar.gz` |
+| Windows | x86_64 | `wk_VERSION_Windows_x86_64.zip` |
+| Windows | ARM64 | `wk_VERSION_Windows_arm64.zip` |
+
+Extract the binary and move it onto your PATH.
+
+**macOS / Linux:**
 
 ```sh
-go install github.com/workato-devs/wk-cli-beta/cmd/wk@latest
+tar -xzf wk_<version>_<OS>_<arch>.tar.gz
+sudo mv wk /usr/local/bin/
+```
+
+**Windows (PowerShell):**
+
+```powershell
+Expand-Archive wk_<version>_Windows_<arch>.zip -DestinationPath .
+Move-Item wk.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\"
+```
+
+**Verify:**
+
+```sh
+wk --version          # macOS / Linux
+wk.exe --version      # Windows
 ```
 
 ### 2. Install the Recipe Visualizer
@@ -62,8 +91,11 @@ Works with VS Code, Cursor, and Windsurf.
 
 ### 3. Install the linter plugin
 
+Download the `recipe-lint` binary for your OS from
+[wk-lint-beta/releases](https://github.com/workato-devs/wk-lint-beta/releases),
+place it on your `PATH`, then register it with the CLI:
+
 ```sh
-go install github.com/workato-devs/wk-lint-beta/cmd/recipe-lint@latest
 wk plugins install recipe-lint
 ```
 
