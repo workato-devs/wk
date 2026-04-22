@@ -4,19 +4,31 @@ dist/
 /wk
 
 # Plugin build artifacts
- plugins/*
- !plugins/example/
+plugins/*
+!plugins/example/
 
 # OS
 .DS_Store
+Thumbs.db
 
-# IDE
+# Editor & IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
 
-# Test & Dev artifacts
+# Environment & secrets
+*.env
+
+# Agent tooling
+.claude/settings.local.json
+.cursor/
+.cursorrules
+.windsurf/
+.windsurfrules
+.aider*
+
+# Test & dev artifacts
 *.test
 coverage.out
-*.env
