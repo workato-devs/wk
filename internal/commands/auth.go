@@ -12,6 +12,7 @@ import (
 	"github.com/workato-devs/wk-cli-beta/internal/api"
 	"github.com/workato-devs/wk-cli-beta/internal/auth"
 	"github.com/workato-devs/wk-cli-beta/internal/config"
+	"github.com/workato-devs/wk-cli-beta/internal/term"
 )
 
 func newAuthCmd() *cobra.Command {
@@ -207,19 +208,8 @@ requires --token and --environment explicitly. See ADR-006.`,
 
 // isInteractiveStdin reports whether the CLI can meaningfully prompt the
 // user — it requires BOTH stdin and stdout to be attached to a terminal.
-// Checking stdout too catches cases where output is captured to a file or
-// piped further, in which case prompt labels become noise (the user can't
-// read them inline with their own input).
 func isInteractiveStdin() bool {
-	return isTerminal(os.Stdin) && isTerminal(os.Stdout)
-}
-
-func isTerminal(f *os.File) bool {
-	fi, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return (fi.Mode() & os.ModeCharDevice) != 0
+	return term.IsTerminal(os.Stdin) && term.IsTerminal(os.Stdout)
 }
 
 // computeProfileName returns <region>-<workspace-slug>-<environment> per

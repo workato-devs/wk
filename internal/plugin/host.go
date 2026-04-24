@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
+
+	"github.com/workato-devs/wk-cli-beta/internal/term"
 )
 
 // PluginHost manages multiple loaded plugin processes.
@@ -69,6 +71,11 @@ func (h *PluginHost) Execute(pluginName, method string, params any) (json.RawMes
 	if !ok {
 		return nil, fmt.Errorf("plugin %q is not loaded", pluginName)
 	}
+
+	sp := term.NewSpinner(fmt.Sprintf("Running %s/%s", pluginName, method))
+	sp.Start()
+	defer sp.Stop()
+
 	return p.Client.Call(method, params)
 }
 
