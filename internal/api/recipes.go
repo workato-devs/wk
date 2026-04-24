@@ -62,7 +62,7 @@ func (s *recipeService) Export(ctx context.Context, id int) ([]byte, error) {
 }
 
 func (s *recipeService) Import(ctx context.Context, folderID int, data []byte) (*Recipe, error) {
-	body, err := decodeRecipeBody(data)
+	body, err := s.decodeAndResolve(ctx, data)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func (s *recipeService) Import(ctx context.Context, folderID int, data []byte) (
 // "code" and "config" as JSON-encoded strings even though exports return
 // them as objects.
 func (s *recipeService) Update(ctx context.Context, id int, data []byte) error {
-	body, err := decodeRecipeBody(data)
+	body, err := s.decodeAndResolve(ctx, data)
 	if err != nil {
 		return err
 	}
@@ -99,14 +99,18 @@ func (s *recipeService) Delete(ctx context.Context, id int) error {
 	return s.client.do(ctx, "DELETE", fmt.Sprintf("/recipes/%d", id), nil, nil)
 }
 
-// decodeRecipeBody unmarshals a recipe export JSON and stringifies the
-// nested "code" / "config" fields so the body round-trips cleanly back
-// through the Workato API's create/update endpoints.
-func decodeRecipeBody(data []byte) (map[string]any, error) {
+// decodeAndResolve unmarshals recipe JSON, resolves any connection reference
+// objects in config to integer IDs, then stringifies code/config for the API.
+func (s *recipeService) decodeAndResolve(ctx context.Context, data []byte) (map[string]any, error) {
 	var body map[string]any
 	if err := json.Unmarshal(data, &body); err != nil {
 		return nil, fmt.Errorf("invalid recipe JSON: %w", err)
 	}
+
+	if err := s.resolveConfigConnections(ctx, body); err != nil {
+		return nil, err
+	}
+
 	for _, key := range []string{"code", "config"} {
 		v, ok := body[key]
 		if !ok {
@@ -122,6 +126,72 @@ func decodeRecipeBody(data []byte) (map[string]any, error) {
 		body[key] = string(encoded)
 	}
 	return body, nil
+}
+
+// resolveConfigConnections walks config entries and replaces any account_id
+// that is a connection reference object (from ZIP/package export format) with
+// the integer connection ID from the workspace. The per-recipe API endpoints
+// expect integer account_id values; the ZIP import endpoint resolves these
+// server-side, but PUT/POST /recipes do not.
+func (s *recipeService) resolveConfigConnections(ctx context.Context, body map[string]any) error {
+	configVal, ok := body["config"]
+	if !ok {
+		return nil
+	}
+
+	configSlice, ok := configVal.([]any)
+	if !ok {
+		return nil
+	}
+
+	// Scan for any object-typed account_id before hitting the API.
+	needsResolution := false
+	for _, entry := range configSlice {
+		entryMap, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, isObj := entryMap["account_id"].(map[string]any); isObj {
+			needsResolution = true
+			break
+		}
+	}
+	if !needsResolution {
+		return nil
+	}
+
+	connSvc := &connectionService{client: s.client}
+	conns, err := connSvc.List(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("listing connections to resolve config references: %w", err)
+	}
+
+	byName := make(map[string]int, len(conns))
+	for _, c := range conns {
+		byName[c.Name] = c.ID
+	}
+
+	for _, entry := range configSlice {
+		entryMap, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		ref, ok := entryMap["account_id"].(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := ref["name"].(string)
+		if name == "" {
+			return fmt.Errorf("connection reference missing \"name\" in config entry (provider=%v)", entryMap["provider"])
+		}
+		id, found := byName[name]
+		if !found {
+			return fmt.Errorf("connection %q not found in workspace; cannot resolve account_id for provider %v", name, entryMap["provider"])
+		}
+		entryMap["account_id"] = id
+	}
+
+	return nil
 }
 
 func (s *recipeService) ListJobs(ctx context.Context, recipeID int, opts *JobListOptions) ([]Job, error) {
