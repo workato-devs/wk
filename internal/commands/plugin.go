@@ -3,7 +3,9 @@ package commands
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -26,11 +28,22 @@ func newPluginsCmd() *cobra.Command {
 
 func newPluginsInstallCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "install <path>",
-		Short: "Install a plugin from a local path",
-		Args:  requireArgs(1, "plugin path is required, e.g.: wk plugins install <path>"),
+		Use:   "install <name-or-path>",
+		Short: "Install a plugin by name (from $PATH) or local path",
+		Args:  requireArgs(1, "plugin name or path is required, e.g.: wk plugins install recipe-lint"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			source, err := filepath.Abs(args[0])
+			source := args[0]
+			var err error
+
+			if !filepath.IsAbs(source) && !strings.Contains(source, string(filepath.Separator)) && source != "." && source != ".." {
+				binPath, lookErr := exec.LookPath(source)
+				if lookErr != nil {
+					return fmt.Errorf("plugin %q not found on $PATH; to install from a local directory, use: wk plugins install ./%s", source, source)
+				}
+				source, err = filepath.Abs(filepath.Dir(binPath))
+			} else {
+				source, err = filepath.Abs(source)
+			}
 			if err != nil {
 				return fmt.Errorf("resolving path: %w", err)
 			}

@@ -28,16 +28,7 @@ flowchart LR
 
 ## Why this CLI?
 
-The four tools together enable a development loop that doesn't exist in the
-current Python CLI (`workato-cli`): an agent generates a recipe using skills
-as context, a developer validates the structure visually, the linter enforces
-rules the agent can't self-check, and the CLI pushes the result to Workato.
-The write-visualize-lint-push cycle is the primary workflow these tools exist
-to support.
-
-If you're migrating from the Python CLI, `wk` covers the same workspace
-operations (recipes, connections, sync) as native Go binaries with no runtime
-dependency, plus the agent-workflow capabilities above.
+`wk` is the steel thread of the development loop. An agent generates a recipe using skills as context, a developer validates the structure visually, the linter enforces rules the agent can't self-check — and `wk` ties them together: it syncs workspace state, runs the linter, and pushes validated recipes to Workato.
 
 ## Setting up the toolkit
 
@@ -159,18 +150,11 @@ and example pipelines.
 
 ### New project (greenfield)
 
-`wk init` creates a project container with a `.wk/` directory for CLI state
-and scaffolds local directories for each declared Workato project:
-
 ```sh
 wk init --project "Marketing Recipes" --project "Sales Recipes"
 ```
 
-The project name is derived from your active auth profile as
-`<region>-<workspace-slug>-<environment>` — the same naming convention
-used for the profile itself. This keeps your project directory, auth
-profile, and workspace aligned automatically. Override with `--name` if
-needed.
+This creates a `wk` project container with a `.wk/` directory for CLI state and scaffolds local directories for each declared Workato project. The project name is derived from your active auth profile as `<region>-<workspace-slug>-<environment>`, keeping your project directory, auth profile, and workspace aligned automatically. Override with `--name` if needed.
 
 After init, the directory looks like this:
 
@@ -217,17 +201,13 @@ wk push          # push local changes to remote workspace
 
 ### Existing project (rehydration)
 
-To adopt a workspace whose Workato projects already exist on the server,
-use `--projects-dir` to discover projects from an existing directory and
-`--verify` to validate each one against the workspace:
+If you already have a local `wk` project layout, use `init --verify` to register it against a workspace:
 
 ```sh
 wk init --projects-dir us-acme-corp-prod --verify
 ```
 
-`--projects-dir` walks one level deep and picks up each subdirectory as a
-Workato project. `--verify` confirms each one exists on the server and
-caches the resolved folder IDs in `wk.toml`.
+`--projects-dir` registers each immediate subdirectory of `us-acme-corp-prod` as a sync entry in `wk.toml`. `--verify` confirms each entry exists on the server and caches the resolved folder/project IDs.
 
 Then pull to hydrate your local directories with the server's current state:
 
@@ -296,18 +276,18 @@ folder_id = 12346
 project_id = 679
 ```
 
-| Field | Purpose |
-|---|---|
-| `name` | Project name (also the container directory name) |
-| `description` | Optional description |
-| `workspace` | Workspace identifier (matches auth profile) |
-| `plugins` | List of plugins to load |
-| `sync` | Array of server-path-to-local-path mappings |
-| `sync.server_path` | Workato folder path on the server |
-| `sync.local_path` | Local directory to sync into |
-| `sync.folder_id` | Cached Workato folder ID — populated by `--verify` or on first sync, avoids repeated folder-hierarchy API walks. Use `wk sync refresh` to re-resolve. |
-| `sync.project_id` | Cached Workato project ID — present only when the folder is a Workato project. Required for project-level operations (`folders delete` on projects). Zero/absent for plain folders. |
-| `sync.include` | Optional glob filter for which files to sync |
+| Field | Required | Purpose |
+|---|---|---|
+| `name` | yes | Project name (also the container directory name) |
+| `workspace` | yes | Workspace identifier (matches auth profile) |
+| `description` | no | Human-readable description |
+| `plugins` | no | List of plugins to load |
+| `[[sync]]` | yes | Array of server-path-to-local-path mappings |
+| `server_path` | yes | Workato folder path on the server |
+| `local_path` | yes | Local directory to sync into |
+| `folder_id` | no | Cached Workato folder ID — populated by `--verify` or on first sync, avoids repeated folder-hierarchy API walks. Use `wk sync refresh` to re-resolve. |
+| `project_id` | no | Cached Workato project ID — present only when the folder is a Workato project. Required for project-level operations (`folders delete` on projects). Zero/absent for plain folders. |
+| `include` | no | Glob filter for which files to sync |
 
 ## Plugin system
 
