@@ -1,5 +1,7 @@
 # wk
 
+> 🟢 **Beta — Design Partner Program**
+
 The CLI component of the [Workato Labs](https://github.com/workato-devs/labs) toolkit — workspace operations, recipe sync, and plugin system. See the Labs README for install instructions and the full toolkit overview.
 
 ## Getting started
