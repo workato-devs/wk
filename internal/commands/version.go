@@ -29,7 +29,7 @@ func newVersionCmd() *cobra.Command {
 				return rctx.Formatter.Format(cmd.OutOrStdout(), info)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "wk version %s (commit: %s, built: %s)\n", versionStr, commitStr, dateStr)
+			fmt.Fprintf(cmd.OutOrStdout(), "wk %s\n", versionStr)
 			return nil
 		},
 	}
