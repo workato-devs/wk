@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -33,6 +34,21 @@ func (s *apiEndpointService) List(ctx context.Context, collectionID *int, opts *
 		return nil, err
 	}
 	return result, nil
+}
+
+func (s *apiEndpointService) Create(ctx context.Context, collectionID int, data []byte) (*APIEndpoint, error) {
+	var body map[string]any
+	if err := json.Unmarshal(data, &body); err != nil {
+		return nil, fmt.Errorf("invalid endpoint JSON: %w", err)
+	}
+	var ep APIEndpoint
+	if err := s.client.do(ctx, "POST", fmt.Sprintf("/api_collections/%d/api_endpoints", collectionID), body, &ep); err != nil {
+		return nil, err
+	}
+	if ep.RecipeID == 0 && ep.FlowID != 0 {
+		ep.RecipeID = ep.FlowID
+	}
+	return &ep, nil
 }
 
 func (s *apiEndpointService) Enable(ctx context.Context, id int) error {

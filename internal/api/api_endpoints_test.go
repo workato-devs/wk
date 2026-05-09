@@ -43,6 +43,44 @@ func TestAPIEndpointService_List(t *testing.T) {
 	}
 }
 
+func TestAPIEndpointService_Create(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/api_collections/5/api_endpoints" {
+			t.Errorf("path = %s, want /api_collections/5/api_endpoints", r.URL.Path)
+		}
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["name"] != "Create User" {
+			t.Errorf("name = %v, want Create User", body["name"])
+		}
+		if body["flow_id"] != float64(42) {
+			t.Errorf("flow_id = %v, want 42", body["flow_id"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":99,"name":"Create User","api_collection_id":5,"active":false,"method":"POST","path":"/users","flow_id":42}`))
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	data := []byte(`{"name":"Create User","method":"POST","path":"/users","flow_id":42}`)
+	ep, err := client.APIEndpoints().Create(context.Background(), 5, data)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ep.ID != 99 {
+		t.Errorf("ID = %d, want 99", ep.ID)
+	}
+	if ep.RecipeID != 42 {
+		t.Errorf("RecipeID = %d, want 42 (backfilled from flow_id)", ep.RecipeID)
+	}
+	if ep.Method != "POST" || ep.Path != "/users" {
+		t.Errorf("Method/Path = %s %s, want POST /users", ep.Method, ep.Path)
+	}
+}
+
 func TestAPIEndpointService_Enable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "PUT" {
