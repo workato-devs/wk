@@ -26,6 +26,7 @@ func newAuthCmd() *cobra.Command {
 	cmd.AddCommand(newAuthSwitchCmd())
 	cmd.AddCommand(newAuthListCmd())
 	cmd.AddCommand(newAuthDeleteCmd())
+	cmd.AddCommand(newAuthTokenCmd())
 	return cmd
 }
 
@@ -548,6 +549,53 @@ func newAuthDeleteCmd() *cobra.Command {
 
 			fmt.Fprintf(os.Stderr, "Deleted profile %q (workspace: %s, environment: %s)\n",
 				profile.Name, profile.Workspace, profile.Environment)
+			return nil
+		},
+	}
+}
+
+func newAuthTokenCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "token",
+		Short: "Print the active profile's API token",
+		Long: `Print the API token for the active profile (or --profile override) to stdout.
+
+Intended for scripting: pipe the output to other tools or assign it to a
+variable. When stdout is a terminal, a warning is printed to stderr.`,
+		Example: `  # Pipe to curl
+  curl -H "Authorization: Bearer $(wk auth token)" https://www.workato.com/api/users/me
+
+  # Assign to variable
+  TOKEN=$(wk auth token)
+
+  # JSON output
+  wk auth token --json`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			activeName, _, err := resolveActiveProfileName()
+			if err != nil {
+				return err
+			}
+			_, cred, err := resolveProfileAndCred(cmd.Context(), activeName)
+			if err != nil {
+				return err
+			}
+
+			if term.IsTerminal(os.Stdout) {
+				fmt.Fprintf(os.Stderr, "Warning: token is being printed to a terminal; prefer piping to avoid exposure\n")
+			}
+
+			if flagJSON {
+				rctx, rerr := BuildRunContext(cmd)
+				if rerr != nil {
+					return rerr
+				}
+				return rctx.Formatter.Format(os.Stdout, map[string]string{"token": cred.Token})
+			}
+
+			fmt.Fprint(os.Stdout, cred.Token)
+			if term.IsTerminal(os.Stdout) {
+				fmt.Fprintln(os.Stdout)
+			}
 			return nil
 		},
 	}
