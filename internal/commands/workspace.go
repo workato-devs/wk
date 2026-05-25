@@ -18,6 +18,7 @@ func newWorkspaceCmd() *cobra.Command {
 	cmd.AddCommand(newWorkspaceInfoCmd())
 	cmd.AddCommand(newWorkspaceUsersCmd())
 	cmd.AddCommand(newWorkspaceAuditLogCmd())
+	cmd.AddCommand(newWorkspacePropertiesCmd())
 	return cmd
 }
 
@@ -149,4 +150,94 @@ func newWorkspaceAuditLogCmd() *cobra.Command {
 	cmd.Flags().StringVar(&until, "until", "", "End date (RFC3339)")
 	cmd.Flags().StringVar(&action, "action", "", "Filter by event type")
 	return cmd
+}
+
+func newWorkspacePropertiesCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "properties",
+		Short: "Manage workspace environment properties",
+	}
+	cmd.AddCommand(newWorkspacePropertiesListCmd())
+	cmd.AddCommand(newWorkspacePropertiesSetCmd())
+	return cmd
+}
+
+func newWorkspacePropertiesListCmd() *cobra.Command {
+	var prefix string
+
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List environment properties",
+		Example: `  wk workspace properties list --prefix app.
+  wk workspace properties list --json`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rctx, err := BuildRunContext(cmd)
+			if err != nil {
+				return err
+			}
+			client, _, err := resolveAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+
+			props, err := client.Workspace().ListProperties(cmd.Context(), prefix)
+			if err != nil {
+				return err
+			}
+
+			if flagJSON {
+				return rctx.Formatter.Format(os.Stdout, props)
+			}
+
+			if len(props) == 0 {
+				if !rctx.Quiet {
+					fmt.Fprintln(os.Stderr, "No properties found.")
+				}
+				return nil
+			}
+
+			headers := []string{"KEY", "VALUE"}
+			var rows [][]string
+			for k, v := range props {
+				rows = append(rows, []string{k, v})
+			}
+			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+		},
+	}
+
+	cmd.Flags().StringVar(&prefix, "prefix", "", "Filter by key prefix (required by API)")
+	_ = cmd.MarkFlagRequired("prefix")
+	return cmd
+}
+
+func newWorkspacePropertiesSetCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "set <key> <value> [key value...]",
+		Short: "Set environment properties (upsert)",
+		Example: `  wk workspace properties set app.env production
+  wk workspace properties set db.host localhost db.port 5432`,
+		Args: cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args)%2 != 0 {
+				return fmt.Errorf("arguments must be key-value pairs (got %d args)", len(args))
+			}
+
+			client, _, err := resolveAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+
+			props := make(map[string]string, len(args)/2)
+			for i := 0; i < len(args); i += 2 {
+				props[args[i]] = args[i+1]
+			}
+
+			if err := client.Workspace().SetProperties(cmd.Context(), props); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(os.Stderr, "Set %d property(ies)\n", len(props))
+			return nil
+		},
+	}
 }

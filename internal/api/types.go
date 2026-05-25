@@ -161,29 +161,32 @@ type TagUpdateOptions struct {
 	Color       *string
 }
 
-// APICollection represents a Workato API collection.
+// APICollection represents a Workato API collection. The API does not
+// support description on collections (silently ignored), and project_id
+// is nullable (omitted when the collection has no project association).
 type APICollection struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	Handle      string `json:"handle,omitempty"`
-	Version     string `json:"version,omitempty"`
-	Description string `json:"description,omitempty"`
-	UsePrefix   bool   `json:"use_prefix,omitempty"`
-	ProjectID   int    `json:"project_id"`
+	ID         int    `json:"id"`
+	Name       string `json:"name"`
+	Version    string `json:"version,omitempty"`
+	URL        string `json:"url,omitempty"`
+	APISpecURL string `json:"api_spec_url,omitempty"`
+	ProjectID  *int   `json:"project_id,omitempty"`
 }
 
-// APIEndpoint represents a Workato API endpoint. The create response returns
-// "flow_id" where the list response returns "recipe_id"; FlowID captures the
-// former so both paths decode cleanly.
+// APIEndpoint represents a Workato API endpoint. The API consistently uses
+// "flow_id" for the recipe association (both list and create). RecipeID is
+// backfilled from FlowID for display convenience.
 type APIEndpoint struct {
-	ID              int    `json:"id"`
-	Name            string `json:"name"`
-	APICollectionID int    `json:"api_collection_id"`
-	Active          bool   `json:"active"`
-	Method          string `json:"method,omitempty"`
-	Path            string `json:"path,omitempty"`
-	RecipeID        int    `json:"recipe_id,omitempty"`
-	FlowID          int    `json:"flow_id,omitempty"`
+	ID              int     `json:"id"`
+	Name            string  `json:"name"`
+	APICollectionID int     `json:"api_collection_id"`
+	Active          bool    `json:"active"`
+	Method          string  `json:"method,omitempty"`
+	Path            string  `json:"path,omitempty"`
+	URL             string  `json:"url,omitempty"`
+	FlowID          int     `json:"flow_id,omitempty"`
+	RecipeID        int     `json:"recipe_id,omitempty"`
+	Description     *string `json:"description,omitempty"`
 }
 
 // Skill represents a Workato agentic skill. The API returns string IDs
@@ -202,6 +205,41 @@ type Skill struct {
 	GeniesCount        int    `json:"genies_count"`
 	TriggerDescription string `json:"trigger_description,omitempty"`
 	Applications       []any  `json:"applications,omitempty"`
+}
+
+// APIClient represents a Workato API Platform client (v2 API).
+// The API wraps responses in {"data":...}; unwrapping happens in the service layer.
+type APIClient struct {
+	ID                 int                `json:"id"`
+	Name               string             `json:"name"`
+	AuthType           string             `json:"auth_type,omitempty"`
+	IsLegacy           bool               `json:"is_legacy"`
+	MTLSEnabled        bool               `json:"mtls_enabled"`
+	ActiveAPIKeysCount int                `json:"active_api_keys_count"`
+	TotalAPIKeysCount  int                `json:"total_api_keys_count"`
+	APICollections     []APICollectionRef `json:"api_collections,omitempty"`
+	APIKeys            []APIKey           `json:"api_keys,omitempty"`
+	CreatedAt          time.Time          `json:"created_at"`
+	UpdatedAt          time.Time          `json:"updated_at"`
+}
+
+// APICollectionRef is a lightweight reference to a collection embedded in an API client response.
+type APICollectionRef struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+// APIKey represents an API key belonging to an API client (v2 API).
+// AuthToken is only populated on create — subsequent reads omit it.
+type APIKey struct {
+	ID          int      `json:"id"`
+	Name        string   `json:"name"`
+	AuthType    string   `json:"auth_type,omitempty"`
+	AuthToken   string   `json:"auth_token,omitempty"`
+	Active      bool     `json:"active"`
+	ActiveSince *string  `json:"active_since,omitempty"`
+	IPAllowList []string `json:"ip_allow_list,omitempty"`
+	IPDenyList  []string `json:"ip_deny_list,omitempty"`
 }
 
 // PaginationOptions provides generic pagination parameters.
@@ -224,6 +262,80 @@ type MCPTool struct {
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"inputSchema"`
 	Annotations map[string]any `json:"annotations,omitempty"`
+}
+
+// MCPManagedServer is the full detail shape from GET /api/mcp/mcp_servers/:handle.
+// The API wraps responses in {"data":...}; unwrapping happens in the service layer.
+// IDs are strings (e.g. "mcps-AYcNrsC8-Dd8-AB").
+type MCPManagedServer struct {
+	ID                   string                    `json:"id"`
+	Name                 string                    `json:"name"`
+	Description          string                    `json:"description,omitempty"`
+	AssetType            string                    `json:"asset_type,omitempty"`
+	LogoURL              *string                   `json:"logo_url,omitempty"`
+	MCPURL               string                    `json:"mcp_url,omitempty"`
+	AuthType             string                    `json:"auth_type,omitempty"`
+	AuthenticationMethod string                    `json:"authentication_method,omitempty"`
+	FolderID             int                       `json:"folder_id"`
+	ProjectID            int                       `json:"project_id"`
+	Folders              []MCPServerFolder         `json:"folders,omitempty"`
+	HasVUADependentTools bool                      `json:"has_vua_dependent_tools"`
+	IDPUserGroupIDs      []string                  `json:"idp_user_group_ids,omitempty"`
+	APICollection        *MCPServerCollectionRef   `json:"api_collection,omitempty"`
+	ToolsCount           int                       `json:"tools_count"`
+	CreatedAt            time.Time                 `json:"created_at"`
+	UpdatedAt            time.Time                 `json:"updated_at"`
+}
+
+// MCPServerFolder is a lightweight folder reference embedded in an MCP server response.
+type MCPServerFolder struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+// MCPServerCollectionRef is the API collection linked to an MCP server.
+type MCPServerCollectionRef struct {
+	ID        int       `json:"id"`
+	Type      string    `json:"type,omitempty"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// MCPServerTool represents a tool assigned to an MCP managed server.
+type MCPServerTool struct {
+	ID                    int      `json:"id"`
+	Name                  string   `json:"name"`
+	Description           *string  `json:"description,omitempty"`
+	OriginalDescription   *string  `json:"original_description,omitempty"`
+	TriggerApplication    *string  `json:"trigger_application,omitempty"`
+	ActionApplications    []string `json:"action_applications,omitempty"`
+	FlowID                int      `json:"flow_id"`
+	Active                bool     `json:"active"`
+	Enabled               bool     `json:"enabled"`
+	VUARequired           bool     `json:"vua_required"`
+	IncompatibilityReasons []string `json:"incompatibility_reasons,omitempty"`
+}
+
+// MCPServerPolicy represents rate/quota limits and IP restrictions for an MCP server.
+type MCPServerPolicy struct {
+	ID          *int              `json:"id"`
+	MCPServerID string            `json:"mcp_server_id"`
+	RateLimits  map[string]int    `json:"rate_limits,omitempty"`
+	QuotaLimits map[string]int    `json:"quota_limits,omitempty"`
+	IPAllowList []string          `json:"ip_allow_list,omitempty"`
+	IPDenyList  []string          `json:"ip_deny_list,omitempty"`
+	CreatedAt   *time.Time        `json:"created_at,omitempty"`
+	UpdatedAt   *time.Time        `json:"updated_at,omitempty"`
+}
+
+// MCPServerListOptions configures MCP server list filtering.
+type MCPServerListOptions struct {
+	ProjectID            *int
+	FolderID             *int
+	AuthenticationMethod string
+	Page                 int
+	PerPage              int
 }
 
 // WorkspaceInfo is the shape returned by GET /users/me. Despite the endpoint
@@ -266,6 +378,18 @@ type AuditLogOptions struct {
 type JobListOptions struct {
 	Status string
 	Limit  int
+}
+
+// RepeatJobsResult is the response from POST /recipes/:id/repeat_jobs.
+type RepeatJobsResult struct {
+	Results []RepeatJobEntry `json:"results"`
+}
+
+// RepeatJobEntry describes the outcome of a single job repeat request.
+type RepeatJobEntry struct {
+	JobID  string `json:"job_id"`
+	Status string `json:"status"` // "enqueued" or "failed"
+	Error  string `json:"error,omitempty"`
 }
 
 // Connector represents a Workato connector (integration).

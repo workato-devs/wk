@@ -32,8 +32,9 @@ func resolveSyncEntries(cfg *config.Config, folder string) ([]config.SyncEntry, 
 
 func newPullCmd() *cobra.Command {
 	var (
-		flagFolder string
-		flagForce  bool
+		flagFolder     string
+		flagForce      bool
+		flagSkipErrors bool
 	)
 
 	cmd := &cobra.Command{
@@ -41,7 +42,8 @@ func newPullCmd() *cobra.Command {
 		Short: "Pull remote assets to local project",
 		Long:  "Download assets from the Workato workspace into the local project directory.",
 		Example: `  wk pull
-  wk pull --folder "Marketing Recipes" --force --json`,
+  wk pull --folder "Marketing Recipes" --force --json
+  wk pull --skip-errors`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -64,7 +66,7 @@ func newPullCmd() *cobra.Command {
 			engine := sync.NewSyncEngine(rctx.ProjectRoot, rctx.Config, client)
 			var allResults []sync.PullResult
 			for _, entry := range entries {
-				results, err := engine.Pull(entry, flagForce)
+				results, err := engine.Pull(entry, flagForce, flagSkipErrors)
 				if err != nil {
 					return err
 				}
@@ -81,7 +83,8 @@ func newPullCmd() *cobra.Command {
 			headers := []string{"FILE", "ACTION"}
 			var rows [][]string
 			for _, r := range allResults {
-				rows = append(rows, []string{r.FilePath, r.Action})
+				row := []string{r.FilePath, r.Action}
+				rows = append(rows, row)
 			}
 			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
 		},
@@ -89,6 +92,7 @@ func newPullCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&flagFolder, "folder", "", "Sync entry filter (server_path or local_path)")
 	cmd.Flags().BoolVar(&flagForce, "force", false, "Overwrite local modifications")
+	cmd.Flags().BoolVar(&flagSkipErrors, "skip-errors", false, "Continue past per-file extraction errors")
 
 	return cmd
 }

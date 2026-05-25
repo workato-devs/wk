@@ -27,6 +27,7 @@ func newRecipesCmd() *cobra.Command {
 	cmd.AddCommand(newRecipesGetCmd())
 	cmd.AddCommand(newRecipesStartCmd())
 	cmd.AddCommand(newRecipesStopCmd())
+	cmd.AddCommand(newRecipesPullCmd())
 	cmd.AddCommand(newRecipesExportCmd())
 	cmd.AddCommand(newRecipesImportCmd())
 	cmd.AddCommand(newRecipesUpdateCmd())
@@ -42,6 +43,7 @@ func newRecipesCmd() *cobra.Command {
 func newRecipesListCmd() *cobra.Command {
 	var folderID int
 	var status string
+	var name string
 	var page, perPage int
 
 	cmd := &cobra.Command{
@@ -49,7 +51,7 @@ func newRecipesListCmd() *cobra.Command {
 		Short: "List recipes",
 		Example: `  wk recipes list
   wk recipes list --folder 123 --status running
-  wk recipes list --json --page 1 --per-page 50`,
+  wk recipes list --name "sync" --json --page 1 --per-page 50`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -72,6 +74,17 @@ func newRecipesListCmd() *cobra.Command {
 			recipes, err := client.Recipes().List(cmd.Context(), opts)
 			if err != nil {
 				return err
+			}
+
+			if name != "" {
+				nameLower := strings.ToLower(name)
+				var filtered []api.Recipe
+				for _, r := range recipes {
+					if strings.Contains(strings.ToLower(r.Name), nameLower) {
+						filtered = append(filtered, r)
+					}
+				}
+				recipes = filtered
 			}
 
 			headers := []string{"ID", "NAME", "DESCRIPTION", "FOLDER", "RUNNING", "VERSION"}
@@ -97,6 +110,7 @@ func newRecipesListCmd() *cobra.Command {
 
 	cmd.Flags().IntVar(&folderID, "folder", 0, "Filter by folder ID")
 	cmd.Flags().StringVar(&status, "status", "all", "Filter by status (running, stopped, all)")
+	cmd.Flags().StringVar(&name, "name", "", "Filter by name (case-insensitive substring match)")
 	cmd.Flags().IntVar(&page, "page", 0, "Page number")
 	cmd.Flags().IntVar(&perPage, "per-page", 0, "Items per page")
 	return cmd
@@ -151,69 +165,113 @@ func newRecipesGetCmd() *cobra.Command {
 func newRecipesStartCmd() *cobra.Command {
 	var noWait bool
 	var pollTimeout int
+	var folderID int
 
 	cmd := &cobra.Command{
-		Use:   "start <id>",
-		Short: "Start a recipe",
+		Use:   "start <id> [id...]",
+		Short: "Start one or more recipes",
 		Example: `  wk recipes start 12345
-  wk recipes start 12345 --no-wait`,
-		Args:  requireArgs(1, "recipe ID is required, e.g.: wk recipes start <id>"),
+  wk recipes start 12345 67890 --no-wait
+  wk recipes start --folder 123`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
 				return err
 			}
 
-			id, err := strconv.Atoi(args[0])
+			ids, err := resolveRecipeIDs(cmd, client, args, folderID)
 			if err != nil {
-				return fmt.Errorf("invalid recipe ID: %s", args[0])
-			}
-
-			if err := client.Recipes().Start(cmd.Context(), id); err != nil {
 				return err
 			}
 
-			if noWait {
-				fmt.Fprintf(os.Stderr, "Recipe %d start requested\n", id)
-				return nil
-			}
-
-			// Poll to verify the recipe actually became active.
-			pt := pollTimeout
-			if pt > 600 {
-				pt = 600
-			}
-			timeout := time.Duration(pt) * time.Second
-			const interval = 2 * time.Second
-			deadline := time.Now().Add(timeout)
-
-			for time.Now().Before(deadline) {
-				recipe, err := client.Recipes().Get(cmd.Context(), id)
-				if err != nil {
-					return fmt.Errorf("checking recipe status: %w", err)
+			for _, id := range ids {
+				if err := client.Recipes().Start(cmd.Context(), id); err != nil {
+					return fmt.Errorf("starting recipe %d: %w", id, err)
 				}
-				if recipe.Running {
-					fmt.Fprintf(os.Stderr, "Recipe %d started and running\n", id)
-					return nil
-				}
-				time.Sleep(interval)
-			}
 
-			return fmt.Errorf("recipe %d did not become active within %s", id, timeout)
+				if noWait || len(ids) > 1 {
+					fmt.Fprintf(os.Stderr, "Recipe %d start requested\n", id)
+					continue
+				}
+
+				pt := pollTimeout
+				if pt > 600 {
+					pt = 600
+				}
+				timeout := time.Duration(pt) * time.Second
+				const interval = 2 * time.Second
+				deadline := time.Now().Add(timeout)
+
+				started := false
+				for time.Now().Before(deadline) {
+					recipe, err := client.Recipes().Get(cmd.Context(), id)
+					if err != nil {
+						return fmt.Errorf("checking recipe status: %w", err)
+					}
+					if recipe.Running {
+						fmt.Fprintf(os.Stderr, "Recipe %d started and running\n", id)
+						started = true
+						break
+					}
+					time.Sleep(interval)
+				}
+				if !started {
+					return fmt.Errorf("recipe %d did not become active within %s", id, timeout)
+				}
+			}
+			return nil
 		},
 	}
 
 	cmd.Flags().BoolVar(&noWait, "no-wait", false, "Do not wait for recipe to become active")
 	cmd.Flags().IntVar(&pollTimeout, "poll-timeout", 120, "Seconds to wait for recipe to become active (max 600)")
+	cmd.Flags().IntVar(&folderID, "folder", 0, "Start all recipes in this folder")
 	return cmd
 }
 
 func newRecipesStopCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:     "stop <id>",
-		Short:   "Stop a recipe",
-		Example: `  wk recipes stop 12345`,
-		Args:  requireArgs(1, "recipe ID is required, e.g.: wk recipes stop <id>"),
+	var folderID int
+
+	cmd := &cobra.Command{
+		Use:   "stop <id> [id...]",
+		Short: "Stop one or more recipes",
+		Example: `  wk recipes stop 12345
+  wk recipes stop 12345 67890
+  wk recipes stop --folder 123`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, _, err := resolveAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+
+			ids, err := resolveRecipeIDs(cmd, client, args, folderID)
+			if err != nil {
+				return err
+			}
+
+			for _, id := range ids {
+				if err := client.Recipes().Stop(cmd.Context(), id); err != nil {
+					return fmt.Errorf("stopping recipe %d: %w", id, err)
+				}
+				fmt.Fprintf(os.Stderr, "Recipe %d stopped\n", id)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().IntVar(&folderID, "folder", 0, "Stop all recipes in this folder")
+	return cmd
+}
+
+func newRecipesPullCmd() *cobra.Command {
+	var outputFile string
+
+	cmd := &cobra.Command{
+		Use:   "pull <id>",
+		Short: "Pull a single recipe by ID (bypasses package export)",
+		Example: `  wk recipes pull 12345
+  wk recipes pull 12345 -o recipe.json`,
+		Args: requireArgs(1, "recipe ID is required, e.g.: wk recipes pull <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
@@ -225,14 +283,26 @@ func newRecipesStopCmd() *cobra.Command {
 				return fmt.Errorf("invalid recipe ID: %s", args[0])
 			}
 
-			if err := client.Recipes().Stop(cmd.Context(), id); err != nil {
+			data, err := client.Recipes().Export(cmd.Context(), id)
+			if err != nil {
 				return err
 			}
 
-			fmt.Fprintf(os.Stderr, "Recipe %d stopped\n", id)
-			return nil
+			if outputFile != "" {
+				if err := os.WriteFile(outputFile, data, 0644); err != nil {
+					return fmt.Errorf("writing file: %w", err)
+				}
+				fmt.Fprintf(os.Stderr, "Recipe %d pulled to %s\n", id, outputFile)
+				return nil
+			}
+
+			_, err = os.Stdout.Write(data)
+			return err
 		},
 	}
+
+	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output file path")
+	return cmd
 }
 
 func newRecipesExportCmd() *cobra.Command {
@@ -394,6 +464,7 @@ func newRecipesJobsCmd() *cobra.Command {
 	cmd.Flags().StringVar(&status, "status", "all", "Filter by status (succeeded, failed, all)")
 	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of jobs to return")
 	cmd.AddCommand(newRecipesJobsGetCmd())
+	cmd.AddCommand(newRecipesJobsRetryCmd())
 	return cmd
 }
 
@@ -466,6 +537,48 @@ func newRecipesJobsGetCmd() *cobra.Command {
 				return rctx.Formatter.FormatList(os.Stdout, headers, rows)
 			}
 			return nil
+		},
+	}
+}
+
+func newRecipesJobsRetryCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "retry <recipe-id> <job-id> [job-id...]",
+		Short: "Retry (repeat) one or more jobs using the latest recipe version",
+		Example: `  wk recipes jobs retry 12345 j-abc123
+  wk recipes jobs retry 12345 j-abc123 j-def456 --json`,
+		Args: cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rctx, err := BuildRunContext(cmd)
+			if err != nil {
+				return err
+			}
+			client, _, err := resolveAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+
+			recipeID, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid recipe ID: %s", args[0])
+			}
+
+			jobIDs := args[1:]
+			result, err := client.Recipes().RepeatJobs(cmd.Context(), recipeID, jobIDs)
+			if err != nil {
+				return err
+			}
+
+			if flagJSON {
+				return rctx.Formatter.Format(os.Stdout, result)
+			}
+
+			headers := []string{"JOB ID", "STATUS", "ERROR"}
+			var rows [][]string
+			for _, r := range result.Results {
+				rows = append(rows, []string{r.JobID, r.Status, r.Error})
+			}
+			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
 		},
 	}
 }
@@ -821,6 +934,36 @@ func metaMatchesRecipe(meta *sync.AssetMeta, recipeName string) bool {
 		return false
 	}
 	return meta.RecipeName != "" && meta.RecipeName == recipeName
+}
+
+// resolveRecipeIDs returns a list of recipe IDs from positional args and/or --folder.
+func resolveRecipeIDs(cmd *cobra.Command, client api.Client, args []string, folderID int) ([]int, error) {
+	if len(args) == 0 && !cmd.Flags().Changed("folder") {
+		return nil, fmt.Errorf("recipe ID(s) or --folder is required")
+	}
+
+	var ids []int
+	for _, a := range args {
+		id, err := strconv.Atoi(a)
+		if err != nil {
+			return nil, fmt.Errorf("invalid recipe ID: %s", a)
+		}
+		ids = append(ids, id)
+	}
+
+	if cmd.Flags().Changed("folder") {
+		recipes, err := client.Recipes().List(cmd.Context(), &api.RecipeListOptions{FolderID: &folderID})
+		if err != nil {
+			return nil, fmt.Errorf("listing recipes in folder %d: %w", folderID, err)
+		}
+		for _, r := range recipes {
+			ids = append(ids, r.ID)
+		}
+		if len(ids) == 0 {
+			return nil, fmt.Errorf("no recipes found in folder %d", folderID)
+		}
+	}
+	return ids, nil
 }
 
 // newRecipesVersionsCmd is the parent of the versions-management subtree.

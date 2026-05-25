@@ -33,6 +33,9 @@ func (s *apiEndpointService) List(ctx context.Context, collectionID *int, opts *
 	if err := s.client.do(ctx, "GET", path, nil, &result); err != nil {
 		return nil, err
 	}
+	for i := range result {
+		backfillEndpointRecipeID(&result[i])
+	}
 	return result, nil
 }
 
@@ -45,10 +48,14 @@ func (s *apiEndpointService) Create(ctx context.Context, collectionID int, data 
 	if err := s.client.do(ctx, "POST", fmt.Sprintf("/api_collections/%d/api_endpoints", collectionID), body, &ep); err != nil {
 		return nil, err
 	}
+	backfillEndpointRecipeID(&ep)
+	return &ep, nil
+}
+
+func backfillEndpointRecipeID(ep *APIEndpoint) {
 	if ep.RecipeID == 0 && ep.FlowID != 0 {
 		ep.RecipeID = ep.FlowID
 	}
-	return &ep, nil
 }
 
 func (s *apiEndpointService) Enable(ctx context.Context, id int) error {

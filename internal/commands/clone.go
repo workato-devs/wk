@@ -93,7 +93,7 @@ pull/push/diff calls skip the folder-hierarchy lookup.`,
 			// Create sync engine and pull
 			engine := sync.NewSyncEngine(absPath, cfg, client)
 			entry := cfg.Sync[0]
-			results, err := engine.Pull(entry, true) // force=true since fresh clone
+			results, err := engine.Pull(entry, true, false) // force=true since fresh clone
 			if err != nil {
 				return fmt.Errorf("pulling assets: %w", err)
 			}

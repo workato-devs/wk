@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+func intPtr(v int) *int { return &v }
+
 func TestAPICollectionService_List(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
@@ -17,8 +19,7 @@ func TestAPICollectionService_List(t *testing.T) {
 			t.Errorf("path = %s, want /api_collections", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		// Production expects raw array (no wrapper).
-		json.NewEncoder(w).Encode([]APICollection{{ID: 1, Name: "v1", Handle: "v1-handle", Version: "1.0", Description: "test collection", UsePrefix: true, ProjectID: 10}})
+		json.NewEncoder(w).Encode([]APICollection{{ID: 1, Name: "v1", Version: "1.0", URL: "https://example.com/v1", ProjectID: intPtr(10)}})
 	}))
 	defer srv.Close()
 
@@ -31,17 +32,14 @@ func TestAPICollectionService_List(t *testing.T) {
 		t.Errorf("got %+v, want 1 collection named v1", collections)
 	}
 	c := collections[0]
-	if c.Handle != "v1-handle" {
-		t.Errorf("Handle = %q, want %q", c.Handle, "v1-handle")
-	}
 	if c.Version != "1.0" {
 		t.Errorf("Version = %q, want %q", c.Version, "1.0")
 	}
-	if c.Description != "test collection" {
-		t.Errorf("Description = %q, want %q", c.Description, "test collection")
+	if c.URL != "https://example.com/v1" {
+		t.Errorf("URL = %q, want %q", c.URL, "https://example.com/v1")
 	}
-	if !c.UsePrefix {
-		t.Error("UsePrefix = false, want true")
+	if c.ProjectID == nil || *c.ProjectID != 10 {
+		t.Errorf("ProjectID = %v, want 10", c.ProjectID)
 	}
 }
 
@@ -55,17 +53,45 @@ func TestAPICollectionService_Create(t *testing.T) {
 		if body["name"] != "v2" {
 			t.Errorf("name = %v, want v2", body["name"])
 		}
+		if body["project_id"] != float64(10) {
+			t.Errorf("project_id = %v, want 10", body["project_id"])
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(APICollection{ID: 2, Name: "v2", ProjectID: 10})
+		json.NewEncoder(w).Encode(APICollection{ID: 2, Name: "v2", ProjectID: intPtr(10)})
 	}))
 	defer srv.Close()
 
 	client := NewHTTPClient(srv.URL, "test-token")
-	c, err := client.APICollections().Create(context.Background(), "v2", 10)
+	c, err := client.APICollections().Create(context.Background(), "v2", intPtr(10))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if c.ID != 2 {
 		t.Errorf("ID = %d, want 2", c.ID)
+	}
+}
+
+func TestAPICollectionService_CreateWithoutProject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		if _, ok := body["project_id"]; ok {
+			t.Error("project_id should not be sent when nil")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(APICollection{ID: 3, Name: "no-project"})
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	c, err := client.APICollections().Create(context.Background(), "no-project", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.ID != 3 {
+		t.Errorf("ID = %d, want 3", c.ID)
+	}
+	if c.ProjectID != nil {
+		t.Errorf("ProjectID = %v, want nil", c.ProjectID)
 	}
 }

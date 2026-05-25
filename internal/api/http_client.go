@@ -25,7 +25,9 @@ type HTTPClient struct {
 	tags           *tagService
 	apiCollections *apiCollectionService
 	apiEndpoints   *apiEndpointService
+	apiClients     *apiClientService
 	skills         *skillService
+	mcpServers     *mcpServerService
 	workspace      *workspaceService
 	connectors     *connectorService
 }
@@ -118,11 +120,25 @@ func (c *HTTPClient) APIEndpoints() APIEndpointService {
 	return c.apiEndpoints
 }
 
+func (c *HTTPClient) APIClients() APIClientService {
+	if c.apiClients == nil {
+		c.apiClients = &apiClientService{client: c}
+	}
+	return c.apiClients
+}
+
 func (c *HTTPClient) Skills() SkillService {
 	if c.skills == nil {
 		c.skills = &skillService{client: c}
 	}
 	return c.skills
+}
+
+func (c *HTTPClient) MCPServers() MCPServerService {
+	if c.mcpServers == nil {
+		c.mcpServers = &mcpServerService{client: c}
+	}
+	return c.mcpServers
 }
 
 func (c *HTTPClient) Workspace() WorkspaceService {

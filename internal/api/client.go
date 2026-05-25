@@ -16,6 +16,7 @@ type RecipeService interface {
 	GetJob(ctx context.Context, recipeID int, jobID string) (*JobDetail, error)
 	Copy(ctx context.Context, recipeID, folderID int) (*Recipe, error)
 	Connect(ctx context.Context, recipeID int, adapterName string, connectionID int) error
+	RepeatJobs(ctx context.Context, recipeID int, jobIDs []string) (*RepeatJobsResult, error)
 	ListVersions(ctx context.Context, recipeID, page, perPage int) ([]RecipeVersion, error)
 	GetVersion(ctx context.Context, recipeID, versionID int) (*RecipeVersion, error)
 	UpdateVersionComment(ctx context.Context, recipeID, versionID int, comment string) (*RecipeVersion, error)
@@ -78,10 +79,20 @@ type TagService interface {
 	Assign(ctx context.Context, addTags, removeTags []string, recipeIDs, connectionIDs []int) error
 }
 
+// APIClientService defines operations on API Platform clients (v2 API).
+type APIClientService interface {
+	List(ctx context.Context, opts *PaginationOptions) ([]APIClient, error)
+	Get(ctx context.Context, id int) (*APIClient, error)
+	Create(ctx context.Context, name string, collectionIDs []string, authType string) (*APIClient, error)
+	Delete(ctx context.Context, id int) error
+	CreateKey(ctx context.Context, clientID int, name string) (*APIKey, error)
+	RefreshKey(ctx context.Context, clientID, keyID int) (*APIKey, error)
+}
+
 // APICollectionService defines operations on API collections.
 type APICollectionService interface {
 	List(ctx context.Context, opts *PaginationOptions) ([]APICollection, error)
-	Create(ctx context.Context, name string, projectID int) (*APICollection, error)
+	Create(ctx context.Context, name string, projectID *int) (*APICollection, error)
 }
 
 // APIEndpointService defines operations on API endpoints.
@@ -99,11 +110,24 @@ type SkillService interface {
 	Create(ctx context.Context, recipeID int) (*Skill, error)
 }
 
+// MCPServerService defines operations on MCP managed servers (/api/mcp/mcp_servers).
+type MCPServerService interface {
+	List(ctx context.Context, opts *MCPServerListOptions) ([]MCPManagedServer, error)
+	Get(ctx context.Context, handle string) (*MCPManagedServer, error)
+	Create(ctx context.Context, name string, folderID int, description string, assetID *int) (*MCPManagedServer, error)
+	Update(ctx context.Context, handle string, opts map[string]any) (*MCPManagedServer, error)
+	Delete(ctx context.Context, handle string) error
+	TokenRenew(ctx context.Context, handle string) (*MCPManagedServer, error)
+	ListTools(ctx context.Context, handle string, opts *PaginationOptions) ([]MCPServerTool, error)
+}
+
 // WorkspaceService defines operations on workspace management.
 type WorkspaceService interface {
 	GetCurrentWorkspace(ctx context.Context) (*WorkspaceInfo, error)
 	ListMembers(ctx context.Context, email string) ([]WorkspaceUser, error)
 	GetAuditLogs(ctx context.Context, opts *AuditLogOptions) ([]AuditLogEntry, error)
+	ListProperties(ctx context.Context, prefix string) (map[string]string, error)
+	SetProperties(ctx context.Context, properties map[string]string) error
 }
 
 // ConnectorService defines operations on connectors.
@@ -120,7 +144,9 @@ type Client interface {
 	Tags() TagService
 	APICollections() APICollectionService
 	APIEndpoints() APIEndpointService
+	APIClients() APIClientService
 	Skills() SkillService
+	MCPServers() MCPServerService
 	Workspace() WorkspaceService
 	Connectors() ConnectorService
 }

@@ -83,8 +83,8 @@ func TestStructFieldCoverage(t *testing.T) {
 			name:       "APICollection",
 			structType: reflect.TypeOf(APICollection{}),
 			expectedFields: []string{
-				"id", "name", "handle", "version",
-				"description", "use_prefix", "project_id",
+				"id", "name", "version", "url",
+				"api_spec_url", "project_id",
 			},
 		},
 		{
@@ -92,7 +92,8 @@ func TestStructFieldCoverage(t *testing.T) {
 			structType: reflect.TypeOf(APIEndpoint{}),
 			expectedFields: []string{
 				"id", "name", "api_collection_id", "active",
-				"method", "path", "recipe_id", "flow_id",
+				"method", "path", "url", "flow_id",
+				"recipe_id", "description",
 			},
 		},
 		{
@@ -165,6 +166,77 @@ func TestStructFieldCoverage(t *testing.T) {
 				"genies_count", "trigger_description", "applications",
 			},
 		},
+		{
+			name:       "APIClient",
+			structType: reflect.TypeOf(APIClient{}),
+			expectedFields: []string{
+				"id", "name", "auth_type", "is_legacy", "mtls_enabled",
+				"active_api_keys_count", "total_api_keys_count",
+				"api_collections", "api_keys",
+				"created_at", "updated_at",
+			},
+		},
+		{
+			name:       "APICollectionRef",
+			structType: reflect.TypeOf(APICollectionRef{}),
+			expectedFields: []string{
+				"id", "name",
+			},
+		},
+		{
+			name:       "APIKey",
+			structType: reflect.TypeOf(APIKey{}),
+			expectedFields: []string{
+				"id", "name", "auth_type", "auth_token",
+				"active", "active_since",
+				"ip_allow_list", "ip_deny_list",
+			},
+		},
+		{
+			name:       "MCPManagedServer",
+			structType: reflect.TypeOf(MCPManagedServer{}),
+			expectedFields: []string{
+				"id", "name", "description", "asset_type", "logo_url",
+				"mcp_url", "auth_type", "authentication_method",
+				"folder_id", "project_id", "folders",
+				"has_vua_dependent_tools", "idp_user_group_ids",
+				"api_collection", "tools_count",
+				"created_at", "updated_at",
+			},
+		},
+		{
+			name:       "MCPServerFolder",
+			structType: reflect.TypeOf(MCPServerFolder{}),
+			expectedFields: []string{
+				"id", "name",
+			},
+		},
+		{
+			name:       "MCPServerCollectionRef",
+			structType: reflect.TypeOf(MCPServerCollectionRef{}),
+			expectedFields: []string{
+				"id", "type", "name", "created_at", "updated_at",
+			},
+		},
+		{
+			name:       "MCPServerTool",
+			structType: reflect.TypeOf(MCPServerTool{}),
+			expectedFields: []string{
+				"id", "name", "description", "original_description",
+				"trigger_application", "action_applications",
+				"flow_id", "active", "enabled", "vua_required",
+				"incompatibility_reasons",
+			},
+		},
+		{
+			name:       "MCPServerPolicy",
+			structType: reflect.TypeOf(MCPServerPolicy{}),
+			expectedFields: []string{
+				"id", "mcp_server_id", "rate_limits", "quota_limits",
+				"ip_allow_list", "ip_deny_list",
+				"created_at", "updated_at",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -208,13 +280,16 @@ func TestStructFieldCoverage_TableColumns(t *testing.T) {
 		"Recipe":        {"id", "name", "description", "folder_id", "running", "version"},
 		"Connection":    {"id", "name", "application", "folder_id", "authorization_status"},
 		"Folder":        {"id", "name", "parent_id"},
-		"APICollection": {"id", "name", "handle", "version", "description", "project_id"},
-		"APIEndpoint":   {"id", "name", "method", "path", "recipe_id", "api_collection_id", "active"},
+		"APICollection": {"id", "name", "version", "url", "project_id"},
+		"APIEndpoint":   {"id", "name", "method", "path", "flow_id", "api_collection_id", "active"},
 		"Tag":           {"handle", "title", "description", "color"},
 		"WorkspaceUser": {"id", "name", "email"},
 		"AuditLogEntry": {"id", "event_type", "user", "timestamp"},
 		"Connector":     {"name", "title", "description"},
 		"Skill":         {"id", "name", "provider_id", "folder_id", "project_id", "running"},
+		"APIClient":          {"id", "name", "auth_type", "api_collections", "active_api_keys_count"},
+		"MCPManagedServer":   {"id", "name", "auth_type", "tools_count", "project_id", "folder_id"},
+		"MCPServerTool":      {"id", "name", "description", "flow_id", "active"},
 	}
 
 	structTypes := map[string]reflect.Type{
@@ -227,7 +302,10 @@ func TestStructFieldCoverage_TableColumns(t *testing.T) {
 		"WorkspaceUser": reflect.TypeOf(WorkspaceUser{}),
 		"AuditLogEntry": reflect.TypeOf(AuditLogEntry{}),
 		"Connector":     reflect.TypeOf(Connector{}),
-		"Skill":         reflect.TypeOf(Skill{}),
+		"Skill":             reflect.TypeOf(Skill{}),
+		"APIClient":         reflect.TypeOf(APIClient{}),
+		"MCPManagedServer":  reflect.TypeOf(MCPManagedServer{}),
+		"MCPServerTool":     reflect.TypeOf(MCPServerTool{}),
 	}
 
 	for name, fields := range requiredTableFields {

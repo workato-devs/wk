@@ -35,6 +35,27 @@ func (s *workspaceService) ListMembers(ctx context.Context, email string) ([]Wor
 	return wrapper.Data, nil
 }
 
+func (s *workspaceService) ListProperties(ctx context.Context, prefix string) (map[string]string, error) {
+	params := url.Values{}
+	if prefix != "" {
+		params.Set("prefix", prefix)
+	}
+	path := "/properties"
+	if len(params) > 0 {
+		path += "?" + params.Encode()
+	}
+	var result map[string]string
+	if err := s.client.do(ctx, "GET", path, nil, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (s *workspaceService) SetProperties(ctx context.Context, properties map[string]string) error {
+	body := map[string]any{"properties": properties}
+	return s.client.do(ctx, "POST", "/properties", body, nil)
+}
+
 func (s *workspaceService) GetAuditLogs(ctx context.Context, opts *AuditLogOptions) ([]AuditLogEntry, error) {
 	params := url.Values{}
 	if opts != nil {
