@@ -140,6 +140,16 @@ func (e *SyncEngine) extractZip(zipData []byte, localDir string, serverPath stri
 		relPath := filepath.ToSlash(f.Name)
 		relPath = strings.TrimPrefix(relPath, "/")
 		assetRel := filepath.FromSlash(relPath)
+
+		// Zip Slip guard: reject entries that resolve outside localDir.
+		if !isInsideDir(filepath.Join(localDir, assetRel), localDir) {
+			if !skipErrors {
+				return nil, nil, fmt.Errorf("zip entry %q resolves outside target directory", f.Name)
+			}
+			results = append(results, PullResult{FilePath: relPath, Action: "error", Error: "path traversal detected"})
+			continue
+		}
+
 		seen[assetRel] = true
 
 		res, err := e.extractOneFile(f, localDir, serverPath, relPath, assetRel, ignore)
@@ -358,6 +368,13 @@ func (e *SyncEngine) reconcileDeletions(localDir string, seen map[string]bool) (
 		}
 	}
 	return results, nil
+}
+
+// isInsideDir returns true when absPath is inside baseDir (after cleaning
+// both). Prevents zip-slip: a zip entry containing ".." could otherwise
+// escape the extraction root.
+func isInsideDir(absPath, baseDir string) bool {
+	return strings.HasPrefix(filepath.Clean(absPath)+string(os.PathSeparator), filepath.Clean(baseDir)+string(os.PathSeparator))
 }
 
 // isJSON returns true if the file path has a .json extension.
