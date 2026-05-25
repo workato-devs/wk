@@ -109,6 +109,17 @@ type SkillService interface {
 	Create(ctx context.Context, recipeID int) (*Skill, error)
 }
 
+// MCPServerService defines operations on MCP managed servers (/api/mcp/mcp_servers).
+type MCPServerService interface {
+	List(ctx context.Context, opts *MCPServerListOptions) ([]MCPManagedServer, error)
+	Get(ctx context.Context, handle string) (*MCPManagedServer, error)
+	Create(ctx context.Context, name string, folderID int, description string, assetID *int) (*MCPManagedServer, error)
+	Update(ctx context.Context, handle string, opts map[string]any) (*MCPManagedServer, error)
+	Delete(ctx context.Context, handle string) error
+	TokenRenew(ctx context.Context, handle string) (*MCPManagedServer, error)
+	ListTools(ctx context.Context, handle string, opts *PaginationOptions) ([]MCPServerTool, error)
+}
+
 // WorkspaceService defines operations on workspace management.
 type WorkspaceService interface {
 	GetCurrentWorkspace(ctx context.Context) (*WorkspaceInfo, error)
@@ -132,6 +143,7 @@ type Client interface {
 	APIEndpoints() APIEndpointService
 	APIClients() APIClientService
 	Skills() SkillService
+	MCPServers() MCPServerService
 	Workspace() WorkspaceService
 	Connectors() ConnectorService
 }

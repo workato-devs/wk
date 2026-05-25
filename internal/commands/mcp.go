@@ -17,6 +17,7 @@ func newMCPCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newMCPTestCmd())
 	cmd.AddCommand(newMCPToolsCmd())
+	cmd.AddCommand(newMCPServersCmd())
 	return cmd
 }
 

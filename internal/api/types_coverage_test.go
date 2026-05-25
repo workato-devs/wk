@@ -192,6 +192,51 @@ func TestStructFieldCoverage(t *testing.T) {
 				"ip_allow_list", "ip_deny_list",
 			},
 		},
+		{
+			name:       "MCPManagedServer",
+			structType: reflect.TypeOf(MCPManagedServer{}),
+			expectedFields: []string{
+				"id", "name", "description", "asset_type", "logo_url",
+				"mcp_url", "auth_type", "authentication_method",
+				"folder_id", "project_id", "folders",
+				"has_vua_dependent_tools", "idp_user_group_ids",
+				"api_collection", "tools_count",
+				"created_at", "updated_at",
+			},
+		},
+		{
+			name:       "MCPServerFolder",
+			structType: reflect.TypeOf(MCPServerFolder{}),
+			expectedFields: []string{
+				"id", "name",
+			},
+		},
+		{
+			name:       "MCPServerCollectionRef",
+			structType: reflect.TypeOf(MCPServerCollectionRef{}),
+			expectedFields: []string{
+				"id", "type", "name", "created_at", "updated_at",
+			},
+		},
+		{
+			name:       "MCPServerTool",
+			structType: reflect.TypeOf(MCPServerTool{}),
+			expectedFields: []string{
+				"id", "name", "description", "original_description",
+				"trigger_application", "action_applications",
+				"flow_id", "active", "enabled", "vua_required",
+				"incompatibility_reasons",
+			},
+		},
+		{
+			name:       "MCPServerPolicy",
+			structType: reflect.TypeOf(MCPServerPolicy{}),
+			expectedFields: []string{
+				"id", "mcp_server_id", "rate_limits", "quota_limits",
+				"ip_allow_list", "ip_deny_list",
+				"created_at", "updated_at",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -242,7 +287,9 @@ func TestStructFieldCoverage_TableColumns(t *testing.T) {
 		"AuditLogEntry": {"id", "event_type", "user", "timestamp"},
 		"Connector":     {"name", "title", "description"},
 		"Skill":         {"id", "name", "provider_id", "folder_id", "project_id", "running"},
-		"APIClient":     {"id", "name", "auth_type", "api_collections", "active_api_keys_count"},
+		"APIClient":          {"id", "name", "auth_type", "api_collections", "active_api_keys_count"},
+		"MCPManagedServer":   {"id", "name", "auth_type", "tools_count", "project_id", "folder_id"},
+		"MCPServerTool":      {"id", "name", "description", "flow_id", "active"},
 	}
 
 	structTypes := map[string]reflect.Type{
@@ -255,8 +302,10 @@ func TestStructFieldCoverage_TableColumns(t *testing.T) {
 		"WorkspaceUser": reflect.TypeOf(WorkspaceUser{}),
 		"AuditLogEntry": reflect.TypeOf(AuditLogEntry{}),
 		"Connector":     reflect.TypeOf(Connector{}),
-		"Skill":         reflect.TypeOf(Skill{}),
-		"APIClient":     reflect.TypeOf(APIClient{}),
+		"Skill":             reflect.TypeOf(Skill{}),
+		"APIClient":         reflect.TypeOf(APIClient{}),
+		"MCPManagedServer":  reflect.TypeOf(MCPManagedServer{}),
+		"MCPServerTool":     reflect.TypeOf(MCPServerTool{}),
 	}
 
 	for name, fields := range requiredTableFields {

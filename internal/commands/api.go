@@ -2,10 +2,13 @@ package commands
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -166,6 +169,7 @@ func newAPIEndpointsCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newAPIEndpointsListCmd())
 	cmd.AddCommand(newAPIEndpointsCreateCmd())
+	cmd.AddCommand(newAPIEndpointsCreateBatchCmd())
 	cmd.AddCommand(newAPIEndpointsEnableCmd())
 	cmd.AddCommand(newAPIEndpointsDisableCmd())
 	return cmd
@@ -294,6 +298,247 @@ or recipe_name (resolved to flow_id via recipe lookup).`,
 	cmd.Flags().IntVar(&collectionID, "collection", 0, "API collection ID")
 	_ = cmd.MarkFlagRequired("collection")
 	return cmd
+}
+
+func newAPIEndpointsCreateBatchCmd() *cobra.Command {
+	var collectionID int
+	var fromCSV string
+	var dryRun, continueOnError bool
+
+	cmd := &cobra.Command{
+		Use:   "create-batch <directory>",
+		Short: "Create API endpoints in batch from a directory or CSV",
+		Long: `Create multiple API endpoints from JSON definition files or a CSV file.
+
+Directory mode: reads all *.api_endpoint.json files from the given directory.
+CSV mode: reads a CSV file with columns: collection,recipe_name,display_name,method,path,description
+
+In both modes, recipe_name is resolved to flow_id via recipe lookup.`,
+		Example: `  wk api endpoints create-batch ./definitions/ --collection 42
+  wk api endpoints create-batch --from-csv endpoints.csv --collection 42
+  wk api endpoints create-batch --from-csv endpoints.csv
+  wk api endpoints create-batch ./definitions/ --collection 42 --dry-run`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rctx, err := BuildRunContext(cmd)
+			if err != nil {
+				return err
+			}
+			client, _, err := resolveAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+
+			var entries []batchEntry
+
+			if fromCSV != "" {
+				csvEntries, err := parseEndpointCSV(cmd.Context(), client, fromCSV, collectionID, cmd.Flags().Changed("collection"))
+				if err != nil {
+					return err
+				}
+				entries = csvEntries
+			} else {
+				if len(args) == 0 {
+					return fmt.Errorf("directory path is required, or use --from-csv")
+				}
+				if !cmd.Flags().Changed("collection") {
+					return fmt.Errorf("--collection is required in directory mode")
+				}
+				dirEntries, err := parseEndpointDir(args[0])
+				if err != nil {
+					return err
+				}
+				for _, de := range dirEntries {
+					entries = append(entries, batchEntry{Source: de.Source, Data: de.Data, CollID: collectionID})
+				}
+			}
+
+			if len(entries) == 0 {
+				return fmt.Errorf("no endpoint definitions found")
+			}
+
+			type resultEntry struct {
+				Name   string `json:"name"`
+				ID     int    `json:"id,omitempty"`
+				Source string `json:"source"`
+				Error  string `json:"error,omitempty"`
+			}
+
+			var created, failed []resultEntry
+
+			for _, e := range entries {
+				var parsed map[string]any
+				_ = json.Unmarshal(e.Data, &parsed)
+				name, _ := parsed["name"].(string)
+				if name == "" {
+					name = e.Source
+				}
+
+				if dryRun {
+					fmt.Fprintf(os.Stderr, "[dry-run] would create: %s (collection %d)\n", name, e.CollID)
+					continue
+				}
+
+				data, err := resolveRecipeNameInEndpointJSON(cmd.Context(), client, e.Data)
+				if err != nil {
+					if continueOnError {
+						fmt.Fprintf(os.Stderr, "FAIL  %s: %v\n", e.Source, err)
+						failed = append(failed, resultEntry{Name: name, Source: e.Source, Error: err.Error()})
+						continue
+					}
+					return fmt.Errorf("%s: %w", e.Source, err)
+				}
+
+				ep, err := client.APIEndpoints().Create(cmd.Context(), e.CollID, data)
+				if err != nil {
+					if continueOnError {
+						fmt.Fprintf(os.Stderr, "FAIL  %s: %v\n", e.Source, err)
+						failed = append(failed, resultEntry{Name: name, Source: e.Source, Error: err.Error()})
+						continue
+					}
+					return fmt.Errorf("%s: %w", e.Source, err)
+				}
+
+				fmt.Fprintf(os.Stderr, "OK    %s (ID: %d)\n", ep.Name, ep.ID)
+				created = append(created, resultEntry{Name: ep.Name, ID: ep.ID, Source: e.Source})
+			}
+
+			if dryRun {
+				fmt.Fprintf(os.Stderr, "\n%d endpoint(s) would be created\n", len(entries))
+				return nil
+			}
+
+			if flagJSON {
+				return rctx.Formatter.Format(os.Stdout, map[string]any{
+					"created": created,
+					"failed":  failed,
+				})
+			}
+
+			fmt.Fprintf(os.Stderr, "\n%d created, %d failed\n", len(created), len(failed))
+			if len(failed) > 0 {
+				return fmt.Errorf("batch completed with %d error(s)", len(failed))
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().IntVar(&collectionID, "collection", 0, "API collection ID (required for directory mode; default for CSV rows)")
+	cmd.Flags().StringVar(&fromCSV, "from-csv", "", "Read endpoint definitions from a CSV file")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be created without making API calls")
+	cmd.Flags().BoolVar(&continueOnError, "continue-on-error", false, "Continue creating remaining endpoints if one fails")
+	return cmd
+}
+
+type dirEntry struct {
+	Source string
+	Data   []byte
+}
+
+func parseEndpointDir(dir string) ([]dirEntry, error) {
+	matches, err := filepath.Glob(filepath.Join(dir, "*.api_endpoint.json"))
+	if err != nil {
+		return nil, fmt.Errorf("scanning directory: %w", err)
+	}
+	if len(matches) == 0 {
+		matches, err = filepath.Glob(filepath.Join(dir, "*.json"))
+		if err != nil {
+			return nil, fmt.Errorf("scanning directory: %w", err)
+		}
+	}
+	var entries []dirEntry
+	for _, path := range matches {
+		if strings.HasSuffix(filepath.Base(path), "api_collection.json") {
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("reading %s: %w", path, err)
+		}
+		entries = append(entries, dirEntry{Source: filepath.Base(path), Data: data})
+	}
+	return entries, nil
+}
+
+type batchEntry struct {
+	Source string
+	Data   []byte
+	CollID int
+}
+
+func parseEndpointCSV(ctx context.Context, client api.Client, csvPath string, defaultCollID int, hasDefaultColl bool) ([]batchEntry, error) {
+	f, err := os.Open(csvPath)
+	if err != nil {
+		return nil, fmt.Errorf("opening CSV: %w", err)
+	}
+	defer f.Close()
+
+	reader := csv.NewReader(f)
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("parsing CSV: %w", err)
+	}
+	if len(records) < 2 {
+		return nil, fmt.Errorf("CSV must have a header row and at least one data row")
+	}
+
+	header := records[0]
+	colIdx := make(map[string]int)
+	for i, h := range header {
+		colIdx[strings.TrimSpace(strings.ToLower(h))] = i
+	}
+
+	requiredCols := []string{"recipe_name", "display_name", "method", "path"}
+	for _, col := range requiredCols {
+		if _, ok := colIdx[col]; !ok {
+			return nil, fmt.Errorf("CSV missing required column %q (have: %s)", col, strings.Join(header, ", "))
+		}
+	}
+
+	collectionCache := make(map[string]int)
+
+	var entries []batchEntry
+	for i, row := range records[1:] {
+		rowNum := i + 2
+
+		collID := defaultCollID
+		if collColIdx, ok := colIdx["collection"]; ok && !hasDefaultColl {
+			collName := strings.TrimSpace(row[collColIdx])
+			if collName != "" {
+				if cached, ok := collectionCache[collName]; ok {
+					collID = cached
+				} else {
+					resolved, err := resolveCollectionName(ctx, client, collName)
+					if err != nil {
+						return nil, fmt.Errorf("row %d: %w", rowNum, err)
+					}
+					collectionCache[collName] = resolved
+					collID = resolved
+				}
+			}
+		}
+		if collID == 0 {
+			return nil, fmt.Errorf("row %d: no collection ID — provide --collection or include a 'collection' column", rowNum)
+		}
+
+		ep := map[string]any{
+			"name":        strings.TrimSpace(row[colIdx["display_name"]]),
+			"method":      strings.TrimSpace(row[colIdx["method"]]),
+			"path":        strings.TrimSpace(row[colIdx["path"]]),
+			"recipe_name": strings.TrimSpace(row[colIdx["recipe_name"]]),
+		}
+		if descIdx, ok := colIdx["description"]; ok && descIdx < len(row) {
+			desc := strings.TrimSpace(row[descIdx])
+			if desc != "" {
+				ep["description"] = desc
+			}
+		}
+
+		data, _ := json.Marshal(ep)
+		source := fmt.Sprintf("%s:%d", filepath.Base(csvPath), rowNum)
+		entries = append(entries, batchEntry{Source: source, Data: data, CollID: collID})
+	}
+
+	return entries, nil
 }
 
 func newAPIEndpointsEnableCmd() *cobra.Command {
@@ -655,9 +900,39 @@ The previous token is immediately invalidated.`,
 	}
 }
 
+// resolveCollectionName resolves an API collection name to its ID.
+func resolveCollectionName(ctx context.Context, client api.Client, name string) (int, error) {
+	collections, err := client.APICollections().List(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("listing collections: %w", err)
+	}
+	var matches []api.APICollection
+	for _, c := range collections {
+		if c.Name == name {
+			matches = append(matches, c)
+		}
+	}
+	if len(matches) == 0 {
+		return 0, fmt.Errorf("no collection found with name %q", name)
+	}
+	if len(matches) > 1 {
+		return 0, fmt.Errorf("multiple collections match name %q (%d found); use collection ID instead", name, len(matches))
+	}
+	return matches[0].ID, nil
+}
+
+// normalizeRecipeName lowercases and replaces underscores with spaces
+// so that slug-style names ("check_in_guest") match display names
+// ("Check in guest") in portable definition files.
+func normalizeRecipeName(s string) string {
+	return strings.ToLower(strings.ReplaceAll(s, "_", " "))
+}
+
 // resolveRecipeNameInEndpointJSON checks if the JSON body contains
 // "recipe_name" and resolves it to "flow_id" via recipe list lookup.
-// Returns the modified JSON with flow_id set and recipe_name removed.
+// Tries exact match first, then normalized match (case-insensitive,
+// underscores treated as spaces). Returns the modified JSON with
+// flow_id set and recipe_name removed.
 func resolveRecipeNameInEndpointJSON(ctx context.Context, client api.Client, data []byte) ([]byte, error) {
 	var body map[string]any
 	if err := json.Unmarshal(data, &body); err != nil {
@@ -678,12 +953,24 @@ func resolveRecipeNameInEndpointJSON(ctx context.Context, client api.Client, dat
 		return nil, fmt.Errorf("looking up recipe %q: %w", recipeName, err)
 	}
 
+	// Exact match first.
 	var matches []api.Recipe
 	for _, r := range recipes {
 		if r.Name == recipeName {
 			matches = append(matches, r)
 		}
 	}
+
+	// Normalized match if no exact match found.
+	if len(matches) == 0 {
+		norm := normalizeRecipeName(recipeName)
+		for _, r := range recipes {
+			if normalizeRecipeName(r.Name) == norm {
+				matches = append(matches, r)
+			}
+		}
+	}
+
 	if len(matches) == 0 {
 		return nil, fmt.Errorf("no recipe found with name %q", recipeName)
 	}

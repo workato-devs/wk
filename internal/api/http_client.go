@@ -27,6 +27,7 @@ type HTTPClient struct {
 	apiEndpoints   *apiEndpointService
 	apiClients     *apiClientService
 	skills         *skillService
+	mcpServers     *mcpServerService
 	workspace      *workspaceService
 	connectors     *connectorService
 }
@@ -131,6 +132,13 @@ func (c *HTTPClient) Skills() SkillService {
 		c.skills = &skillService{client: c}
 	}
 	return c.skills
+}
+
+func (c *HTTPClient) MCPServers() MCPServerService {
+	if c.mcpServers == nil {
+		c.mcpServers = &mcpServerService{client: c}
+	}
+	return c.mcpServers
 }
 
 func (c *HTTPClient) Workspace() WorkspaceService {
