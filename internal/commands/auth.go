@@ -290,8 +290,7 @@ func newAuthStatusCmd() *cobra.Command {
 				return err
 			}
 
-			pm := auth.NewProfileManager()
-			activeName, err := pm.GetActiveProfile()
+			activeName, _, err := resolveActiveProfileName()
 			if err != nil {
 				return fmt.Errorf("no active profile: %w", err)
 			}
@@ -301,6 +300,7 @@ func newAuthStatusCmd() *cobra.Command {
 				// Fall back to metadata-only read so status can still report
 				// which profile is configured even if the backend can't be
 				// reached.
+				pm := auth.NewProfileManager()
 				p, perr := pm.GetProfile(activeName)
 				if perr != nil {
 					return fmt.Errorf("profile %q: %w", activeName, perr)

@@ -161,29 +161,32 @@ type TagUpdateOptions struct {
 	Color       *string
 }
 
-// APICollection represents a Workato API collection.
+// APICollection represents a Workato API collection. The API does not
+// support description on collections (silently ignored), and project_id
+// is nullable (omitted when the collection has no project association).
 type APICollection struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	Handle      string `json:"handle,omitempty"`
-	Version     string `json:"version,omitempty"`
-	Description string `json:"description,omitempty"`
-	UsePrefix   bool   `json:"use_prefix,omitempty"`
-	ProjectID   int    `json:"project_id"`
+	ID         int    `json:"id"`
+	Name       string `json:"name"`
+	Version    string `json:"version,omitempty"`
+	URL        string `json:"url,omitempty"`
+	APISpecURL string `json:"api_spec_url,omitempty"`
+	ProjectID  *int   `json:"project_id,omitempty"`
 }
 
-// APIEndpoint represents a Workato API endpoint. The create response returns
-// "flow_id" where the list response returns "recipe_id"; FlowID captures the
-// former so both paths decode cleanly.
+// APIEndpoint represents a Workato API endpoint. The API consistently uses
+// "flow_id" for the recipe association (both list and create). RecipeID is
+// backfilled from FlowID for display convenience.
 type APIEndpoint struct {
-	ID              int    `json:"id"`
-	Name            string `json:"name"`
-	APICollectionID int    `json:"api_collection_id"`
-	Active          bool   `json:"active"`
-	Method          string `json:"method,omitempty"`
-	Path            string `json:"path,omitempty"`
-	RecipeID        int    `json:"recipe_id,omitempty"`
-	FlowID          int    `json:"flow_id,omitempty"`
+	ID              int     `json:"id"`
+	Name            string  `json:"name"`
+	APICollectionID int     `json:"api_collection_id"`
+	Active          bool    `json:"active"`
+	Method          string  `json:"method,omitempty"`
+	Path            string  `json:"path,omitempty"`
+	URL             string  `json:"url,omitempty"`
+	FlowID          int     `json:"flow_id,omitempty"`
+	RecipeID        int     `json:"recipe_id,omitempty"`
+	Description     *string `json:"description,omitempty"`
 }
 
 // Skill represents a Workato agentic skill. The API returns string IDs
@@ -202,6 +205,41 @@ type Skill struct {
 	GeniesCount        int    `json:"genies_count"`
 	TriggerDescription string `json:"trigger_description,omitempty"`
 	Applications       []any  `json:"applications,omitempty"`
+}
+
+// APIClient represents a Workato API Platform client (v2 API).
+// The API wraps responses in {"data":...}; unwrapping happens in the service layer.
+type APIClient struct {
+	ID                 int                `json:"id"`
+	Name               string             `json:"name"`
+	AuthType           string             `json:"auth_type,omitempty"`
+	IsLegacy           bool               `json:"is_legacy"`
+	MTLSEnabled        bool               `json:"mtls_enabled"`
+	ActiveAPIKeysCount int                `json:"active_api_keys_count"`
+	TotalAPIKeysCount  int                `json:"total_api_keys_count"`
+	APICollections     []APICollectionRef `json:"api_collections,omitempty"`
+	APIKeys            []APIKey           `json:"api_keys,omitempty"`
+	CreatedAt          time.Time          `json:"created_at"`
+	UpdatedAt          time.Time          `json:"updated_at"`
+}
+
+// APICollectionRef is a lightweight reference to a collection embedded in an API client response.
+type APICollectionRef struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+// APIKey represents an API key belonging to an API client (v2 API).
+// AuthToken is only populated on create — subsequent reads omit it.
+type APIKey struct {
+	ID          int      `json:"id"`
+	Name        string   `json:"name"`
+	AuthType    string   `json:"auth_type,omitempty"`
+	AuthToken   string   `json:"auth_token,omitempty"`
+	Active      bool     `json:"active"`
+	ActiveSince *string  `json:"active_since,omitempty"`
+	IPAllowList []string `json:"ip_allow_list,omitempty"`
+	IPDenyList  []string `json:"ip_deny_list,omitempty"`
 }
 
 // PaginationOptions provides generic pagination parameters.

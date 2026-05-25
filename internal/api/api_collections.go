@@ -31,10 +31,12 @@ func (s *apiCollectionService) List(ctx context.Context, opts *PaginationOptions
 	return result, nil
 }
 
-func (s *apiCollectionService) Create(ctx context.Context, name string, projectID int) (*APICollection, error) {
+func (s *apiCollectionService) Create(ctx context.Context, name string, projectID *int) (*APICollection, error) {
 	body := map[string]any{
-		"name":       name,
-		"project_id": projectID,
+		"name": name,
+	}
+	if projectID != nil {
+		body["project_id"] = *projectID
 	}
 	var collection APICollection
 	if err := s.client.do(ctx, "POST", "/api_collections", body, &collection); err != nil {

@@ -78,10 +78,20 @@ type TagService interface {
 	Assign(ctx context.Context, addTags, removeTags []string, recipeIDs, connectionIDs []int) error
 }
 
+// APIClientService defines operations on API Platform clients (v2 API).
+type APIClientService interface {
+	List(ctx context.Context, opts *PaginationOptions) ([]APIClient, error)
+	Get(ctx context.Context, id int) (*APIClient, error)
+	Create(ctx context.Context, name string, collectionIDs []string, authType string) (*APIClient, error)
+	Delete(ctx context.Context, id int) error
+	CreateKey(ctx context.Context, clientID int, name string) (*APIKey, error)
+	RefreshKey(ctx context.Context, clientID, keyID int) (*APIKey, error)
+}
+
 // APICollectionService defines operations on API collections.
 type APICollectionService interface {
 	List(ctx context.Context, opts *PaginationOptions) ([]APICollection, error)
-	Create(ctx context.Context, name string, projectID int) (*APICollection, error)
+	Create(ctx context.Context, name string, projectID *int) (*APICollection, error)
 }
 
 // APIEndpointService defines operations on API endpoints.
@@ -120,6 +130,7 @@ type Client interface {
 	Tags() TagService
 	APICollections() APICollectionService
 	APIEndpoints() APIEndpointService
+	APIClients() APIClientService
 	Skills() SkillService
 	Workspace() WorkspaceService
 	Connectors() ConnectorService

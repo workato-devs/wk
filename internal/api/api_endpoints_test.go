@@ -17,8 +17,7 @@ func TestAPIEndpointService_List(t *testing.T) {
 			t.Errorf("api_collection_id = %q, want 5", cid)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		// Production expects raw array (no wrapper).
-		json.NewEncoder(w).Encode([]APIEndpoint{{ID: 1, Name: "ep1", APICollectionID: 5, Active: true, Method: "GET", Path: "/users", RecipeID: 42}})
+		w.Write([]byte(`[{"id":1,"name":"ep1","api_collection_id":5,"active":true,"method":"GET","path":"/users","flow_id":42,"description":"test desc"}]`))
 	}))
 	defer srv.Close()
 
@@ -38,8 +37,14 @@ func TestAPIEndpointService_List(t *testing.T) {
 	if ep.Path != "/users" {
 		t.Errorf("Path = %q, want %q", ep.Path, "/users")
 	}
+	if ep.FlowID != 42 {
+		t.Errorf("FlowID = %d, want 42", ep.FlowID)
+	}
 	if ep.RecipeID != 42 {
-		t.Errorf("RecipeID = %d, want 42", ep.RecipeID)
+		t.Errorf("RecipeID = %d, want 42 (backfilled from FlowID)", ep.RecipeID)
+	}
+	if ep.Description == nil || *ep.Description != "test desc" {
+		t.Errorf("Description = %v, want %q", ep.Description, "test desc")
 	}
 }
 
@@ -59,13 +64,16 @@ func TestAPIEndpointService_Create(t *testing.T) {
 		if body["flow_id"] != float64(42) {
 			t.Errorf("flow_id = %v, want 42", body["flow_id"])
 		}
+		if body["description"] != "Creates a user" {
+			t.Errorf("description = %v, want Creates a user", body["description"])
+		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":99,"name":"Create User","api_collection_id":5,"active":false,"method":"POST","path":"/users","flow_id":42}`))
+		w.Write([]byte(`{"id":99,"name":"Create User","api_collection_id":5,"active":false,"method":"POST","path":"/users","flow_id":42,"description":"Creates a user"}`))
 	}))
 	defer srv.Close()
 
 	client := NewHTTPClient(srv.URL, "test-token")
-	data := []byte(`{"name":"Create User","method":"POST","path":"/users","flow_id":42}`)
+	data := []byte(`{"name":"Create User","method":"POST","path":"/users","flow_id":42,"description":"Creates a user"}`)
 	ep, err := client.APIEndpoints().Create(context.Background(), 5, data)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

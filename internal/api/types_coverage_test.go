@@ -83,8 +83,8 @@ func TestStructFieldCoverage(t *testing.T) {
 			name:       "APICollection",
 			structType: reflect.TypeOf(APICollection{}),
 			expectedFields: []string{
-				"id", "name", "handle", "version",
-				"description", "use_prefix", "project_id",
+				"id", "name", "version", "url",
+				"api_spec_url", "project_id",
 			},
 		},
 		{
@@ -92,7 +92,8 @@ func TestStructFieldCoverage(t *testing.T) {
 			structType: reflect.TypeOf(APIEndpoint{}),
 			expectedFields: []string{
 				"id", "name", "api_collection_id", "active",
-				"method", "path", "recipe_id", "flow_id",
+				"method", "path", "url", "flow_id",
+				"recipe_id", "description",
 			},
 		},
 		{
@@ -165,6 +166,32 @@ func TestStructFieldCoverage(t *testing.T) {
 				"genies_count", "trigger_description", "applications",
 			},
 		},
+		{
+			name:       "APIClient",
+			structType: reflect.TypeOf(APIClient{}),
+			expectedFields: []string{
+				"id", "name", "auth_type", "is_legacy", "mtls_enabled",
+				"active_api_keys_count", "total_api_keys_count",
+				"api_collections", "api_keys",
+				"created_at", "updated_at",
+			},
+		},
+		{
+			name:       "APICollectionRef",
+			structType: reflect.TypeOf(APICollectionRef{}),
+			expectedFields: []string{
+				"id", "name",
+			},
+		},
+		{
+			name:       "APIKey",
+			structType: reflect.TypeOf(APIKey{}),
+			expectedFields: []string{
+				"id", "name", "auth_type", "auth_token",
+				"active", "active_since",
+				"ip_allow_list", "ip_deny_list",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -208,13 +235,14 @@ func TestStructFieldCoverage_TableColumns(t *testing.T) {
 		"Recipe":        {"id", "name", "description", "folder_id", "running", "version"},
 		"Connection":    {"id", "name", "application", "folder_id", "authorization_status"},
 		"Folder":        {"id", "name", "parent_id"},
-		"APICollection": {"id", "name", "handle", "version", "description", "project_id"},
-		"APIEndpoint":   {"id", "name", "method", "path", "recipe_id", "api_collection_id", "active"},
+		"APICollection": {"id", "name", "version", "url", "project_id"},
+		"APIEndpoint":   {"id", "name", "method", "path", "flow_id", "api_collection_id", "active"},
 		"Tag":           {"handle", "title", "description", "color"},
 		"WorkspaceUser": {"id", "name", "email"},
 		"AuditLogEntry": {"id", "event_type", "user", "timestamp"},
 		"Connector":     {"name", "title", "description"},
 		"Skill":         {"id", "name", "provider_id", "folder_id", "project_id", "running"},
+		"APIClient":     {"id", "name", "auth_type", "api_collections", "active_api_keys_count"},
 	}
 
 	structTypes := map[string]reflect.Type{
@@ -228,6 +256,7 @@ func TestStructFieldCoverage_TableColumns(t *testing.T) {
 		"AuditLogEntry": reflect.TypeOf(AuditLogEntry{}),
 		"Connector":     reflect.TypeOf(Connector{}),
 		"Skill":         reflect.TypeOf(Skill{}),
+		"APIClient":     reflect.TypeOf(APIClient{}),
 	}
 
 	for name, fields := range requiredTableFields {
