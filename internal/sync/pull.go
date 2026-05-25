@@ -20,9 +20,11 @@ import (
 type PullResult struct {
 	FilePath string `json:"file_path"`
 	// Action is one of: "created", "updated", "unchanged", "skipped",
-	// "deleted" (server-side delete reconciled locally), or "orphaned"
-	// (server-side deleted but local copy was modified — kept on disk).
+	// "deleted" (server-side delete reconciled locally), "orphaned"
+	// (server-side deleted but local copy was modified — kept on disk),
+	// or "error" (per-file failure when --skip-errors is active).
 	Action string `json:"action"`
+	Error  string `json:"error,omitempty"`
 }
 
 // Pull downloads remote assets to the local project directory.
@@ -32,7 +34,7 @@ type PullResult struct {
 // are NOT conflicts: reconcileDeletions reports them as "orphaned" and
 // leaves them on disk untouched. That narrower semantic means the
 // overwrite check must run after the zip is in hand, not before.
-func (e *SyncEngine) Pull(entry config.SyncEntry, force bool) ([]PullResult, error) {
+func (e *SyncEngine) Pull(entry config.SyncEntry, force, skipErrors bool) ([]PullResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -93,7 +95,7 @@ func (e *SyncEngine) Pull(entry config.SyncEntry, force bool) ([]PullResult, err
 	}
 
 	// Extract and write files.
-	results, seen, err := e.extractZip(zipData, localDir, entry.ServerPath)
+	results, seen, err := e.extractZip(zipData, localDir, entry.ServerPath, skipErrors)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +116,7 @@ func (e *SyncEngine) Pull(entry config.SyncEntry, force bool) ([]PullResult, err
 // files. Returns the PullResult list and a set of asset paths (relative to
 // localDir, native separator) that the zip contained — the caller uses the
 // set to reconcile server-side deletions against existing meta files.
-func (e *SyncEngine) extractZip(zipData []byte, localDir string, serverPath string) ([]PullResult, map[string]bool, error) {
+func (e *SyncEngine) extractZip(zipData []byte, localDir string, serverPath string, skipErrors bool) ([]PullResult, map[string]bool, error) {
 	r, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
 	if err != nil {
 		return nil, nil, fmt.Errorf("opening zip: %w", err)
@@ -135,98 +137,92 @@ func (e *SyncEngine) extractZip(zipData []byte, localDir string, serverPath stri
 			continue
 		}
 
-		rc, err := f.Open()
-		if err != nil {
-			return nil, nil, fmt.Errorf("opening %s in zip: %w", f.Name, err)
-		}
-		data, err := io.ReadAll(rc)
-		rc.Close()
-		if err != nil {
-			return nil, nil, fmt.Errorf("reading %s in zip: %w", f.Name, err)
-		}
-
-		// Normalize zip path.
 		relPath := filepath.ToSlash(f.Name)
 		relPath = strings.TrimPrefix(relPath, "/")
-
-		// Track in the seen-set using the native-separator form so it
-		// lines up with FindMetaFiles keys, which come from filepath.Rel.
 		assetRel := filepath.FromSlash(relPath)
 		seen[assetRel] = true
 
-		// Consult .wkignore using the project-root-relative path.
-		absPath := filepath.Join(localDir, assetRel)
-		if projectRel, rerr := e.projectRel(absPath); rerr == nil {
-			if ignore.ShouldSkip(projectRel, false) {
-				results = append(results, PullResult{FilePath: relPath, Action: "skipped"})
-				continue
-			}
-		}
-
-		// Normalize JSON to prevent phantom diffs from server-side reformatting.
-		if isJSON(relPath) {
-			if normalized, err := normalizeJSON(data); err == nil {
-				data = normalized
-			}
-		}
-
-		newHash := ComputeHash(data)
-
-		// Determine action.
-		action := "created"
-		if existing, err := os.ReadFile(absPath); err == nil {
-			if ComputeHash(existing) == newHash {
-				action = "unchanged"
-			} else {
-				action = "updated"
-			}
-		}
-
-		if action != "unchanged" {
-			// Ensure parent directory exists.
-			if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
-				return nil, nil, fmt.Errorf("creating directory for %s: %w", absPath, err)
-			}
-			if err := os.WriteFile(absPath, data, 0644); err != nil {
-				return nil, nil, fmt.Errorf("writing %s: %w", absPath, err)
-			}
-		}
-
-		// Write/update sidecar meta under .wk/. Extract recipe name from
-		// the JSON body when possible so wk recipes delete (and similar
-		// local-cleanup paths) can match metas to server recipes reliably,
-		// regardless of how the filename was chosen. The package-manifest
-		// zip does not carry server-side IDs — name is the only stable
-		// key available here.
-		assetType := inferAssetType(relPath)
-		meta := &AssetMeta{
-			ServerPath:   serverPath + "/" + relPath,
-			ZipName:      f.Name,
-			Folder:       filepath.Dir(relPath),
-			Type:         assetType,
-			ContentHash:  newHash,
-			LastPulledAt: time.Now().UTC(),
-		}
-		if assetType == "recipe" && isJSON(relPath) {
-			if name := extractJSONStringField(data, "name"); name != "" {
-				meta.RecipeName = name
-			}
-		}
-		metaPath, err := MetaPath(e.projectRoot, absPath)
+		res, err := e.extractOneFile(f, localDir, serverPath, relPath, assetRel, ignore)
 		if err != nil {
-			return nil, nil, fmt.Errorf("meta path for %s: %w", relPath, err)
+			if !skipErrors {
+				return nil, nil, err
+			}
+			results = append(results, PullResult{FilePath: relPath, Action: "error", Error: err.Error()})
+			continue
 		}
-		if err := WriteMeta(metaPath, meta); err != nil {
-			return nil, nil, fmt.Errorf("writing meta for %s: %w", relPath, err)
-		}
-
-		results = append(results, PullResult{
-			FilePath: relPath,
-			Action:   action,
-		})
+		results = append(results, res)
 	}
 
 	return results, seen, nil
+}
+
+func (e *SyncEngine) extractOneFile(f *zip.File, localDir, serverPath, relPath, assetRel string, ignore *Matcher) (PullResult, error) {
+	absPath := filepath.Join(localDir, assetRel)
+	if projectRel, rerr := e.projectRel(absPath); rerr == nil {
+		if ignore.ShouldSkip(projectRel, false) {
+			return PullResult{FilePath: relPath, Action: "skipped"}, nil
+		}
+	}
+
+	rc, err := f.Open()
+	if err != nil {
+		return PullResult{}, fmt.Errorf("opening %s in zip: %w", f.Name, err)
+	}
+	data, err := io.ReadAll(rc)
+	rc.Close()
+	if err != nil {
+		return PullResult{}, fmt.Errorf("reading %s in zip: %w", f.Name, err)
+	}
+
+	if isJSON(relPath) {
+		if normalized, nerr := normalizeJSON(data); nerr == nil {
+			data = normalized
+		}
+	}
+
+	newHash := ComputeHash(data)
+
+	action := "created"
+	if existing, rerr := os.ReadFile(absPath); rerr == nil {
+		if ComputeHash(existing) == newHash {
+			action = "unchanged"
+		} else {
+			action = "updated"
+		}
+	}
+
+	if action != "unchanged" {
+		if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
+			return PullResult{}, fmt.Errorf("creating directory for %s: %w", absPath, err)
+		}
+		if err := os.WriteFile(absPath, data, 0644); err != nil {
+			return PullResult{}, fmt.Errorf("writing %s: %w", absPath, err)
+		}
+	}
+
+	assetType := inferAssetType(relPath)
+	meta := &AssetMeta{
+		ServerPath:   serverPath + "/" + relPath,
+		ZipName:      f.Name,
+		Folder:       filepath.Dir(relPath),
+		Type:         assetType,
+		ContentHash:  newHash,
+		LastPulledAt: time.Now().UTC(),
+	}
+	if assetType == "recipe" && isJSON(relPath) {
+		if name := extractJSONStringField(data, "name"); name != "" {
+			meta.RecipeName = name
+		}
+	}
+	metaPath, err := MetaPath(e.projectRoot, absPath)
+	if err != nil {
+		return PullResult{}, fmt.Errorf("meta path for %s: %w", relPath, err)
+	}
+	if err := WriteMeta(metaPath, meta); err != nil {
+		return PullResult{}, fmt.Errorf("writing meta for %s: %w", relPath, err)
+	}
+
+	return PullResult{FilePath: relPath, Action: action}, nil
 }
 
 // zipAssetPaths returns the set of asset paths (relative to the zip root,

@@ -149,7 +149,7 @@ func TestExtractZip_PopulatesRecipeNameFromJSONBody(t *testing.T) {
 		"notes.txt":             []byte("not a recipe"),
 	})
 
-	results, seen, err := engine.extractZip(zipData, localDir, "Recipes/slack")
+	results, seen, err := engine.extractZip(zipData, localDir, "Recipes/slack", false)
 	if err != nil {
 		t.Fatalf("extractZip: %v", err)
 	}

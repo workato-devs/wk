@@ -321,3 +321,12 @@ func (s *recipeService) Connect(ctx context.Context, recipeID int, adapterName s
 	return s.client.do(ctx, "PUT", fmt.Sprintf("/recipes/%d/connect", recipeID), body, nil)
 }
 
+func (s *recipeService) RepeatJobs(ctx context.Context, recipeID int, jobIDs []string) (*RepeatJobsResult, error) {
+	body := map[string]any{"job_ids": jobIDs}
+	var result RepeatJobsResult
+	if err := s.client.do(ctx, "POST", fmt.Sprintf("/recipes/%d/repeat_jobs", recipeID), body, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+

@@ -16,6 +16,7 @@ type RecipeService interface {
 	GetJob(ctx context.Context, recipeID int, jobID string) (*JobDetail, error)
 	Copy(ctx context.Context, recipeID, folderID int) (*Recipe, error)
 	Connect(ctx context.Context, recipeID int, adapterName string, connectionID int) error
+	RepeatJobs(ctx context.Context, recipeID int, jobIDs []string) (*RepeatJobsResult, error)
 	ListVersions(ctx context.Context, recipeID, page, perPage int) ([]RecipeVersion, error)
 	GetVersion(ctx context.Context, recipeID, versionID int) (*RecipeVersion, error)
 	UpdateVersionComment(ctx context.Context, recipeID, versionID int, comment string) (*RecipeVersion, error)
@@ -125,6 +126,8 @@ type WorkspaceService interface {
 	GetCurrentWorkspace(ctx context.Context) (*WorkspaceInfo, error)
 	ListMembers(ctx context.Context, email string) ([]WorkspaceUser, error)
 	GetAuditLogs(ctx context.Context, opts *AuditLogOptions) ([]AuditLogEntry, error)
+	ListProperties(ctx context.Context, prefix string) (map[string]string, error)
+	SetProperties(ctx context.Context, properties map[string]string) error
 }
 
 // ConnectorService defines operations on connectors.

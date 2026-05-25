@@ -380,6 +380,18 @@ type JobListOptions struct {
 	Limit  int
 }
 
+// RepeatJobsResult is the response from POST /recipes/:id/repeat_jobs.
+type RepeatJobsResult struct {
+	Results []RepeatJobEntry `json:"results"`
+}
+
+// RepeatJobEntry describes the outcome of a single job repeat request.
+type RepeatJobEntry struct {
+	JobID  string `json:"job_id"`
+	Status string `json:"status"` // "enqueued" or "failed"
+	Error  string `json:"error,omitempty"`
+}
+
 // Connector represents a Workato connector (integration).
 type Connector struct {
 	Name        string `json:"name"`
