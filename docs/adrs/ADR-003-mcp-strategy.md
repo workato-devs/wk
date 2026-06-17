@@ -1,8 +1,8 @@
 # ADR-003: MCP Strategy — No Auto-Delegation, Protocol-Level Tooling Only
 
+**Author(s):** Zayne Turner
 **Status:** Accepted
 **Date:** March 3, 2026
-**Author:** Zayne Turner
 **Deciders:** DevRel Engineering
 **References:** ADR-001 (Foundational Architecture), PRD Section "MCP Integration Strategy"
 

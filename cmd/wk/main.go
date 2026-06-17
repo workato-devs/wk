@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/workato-devs/wk-cli-beta/internal/commands"
+	"github.com/workato-devs/wk/internal/commands"
 )
 
 // Set by goreleaser ldflags.

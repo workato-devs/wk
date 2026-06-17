@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/workato-devs/wk-cli-beta/internal/config"
-	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
+	"github.com/workato-devs/wk/internal/config"
+	wkerrors "github.com/workato-devs/wk/internal/errors"
 )
 
 // newSyncAddCmd adds one or more [[sync]] entries to wk.toml using the

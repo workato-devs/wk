@@ -1,14 +1,25 @@
 # ADR-004: Plugin Repo Structure — Separate Repos, Not a Monorepo
 
+**Author(s):** Zayne Turner
+**Amended-by:** Claude [role: assistant; harness: Claude Code; model: Opus 4.8], dir. Zayne Turner — June 2026
 **Status:** Accepted
 **Date:** March 3, 2026
-**Author:** Zayne Turner
 **Deciders:** DevRel Engineering
 **References:** ADR-001 (Decision 6: JSON-RPC Plugins), ADR-002 (Decision 8: Pre-Push Hooks), wk-lint-beta ADR-0001 (Tiered Lint Architecture)
+
+**Amendments:**
+- June 2026 — Repos renamed for public launch: `wk-cli-beta` → `wk`, `wk-lint-beta` → `recipe-lint`. Original names retained in the body below as the historical record.
 
 ---
 
 ## Context
+
+> **Amendment (June 2026): repos renamed for the public launch.**
+> This ADR was written when the CLI repo was `wk-cli-beta` and the linter repo
+> was `wk-lint-beta`. They are now `github.com/workato-devs/wk` and
+> `github.com/workato-devs/recipe-lint` respectively (the plugin/binary name
+> `recipe-lint` is itself unchanged). The original repo names are kept in the
+> text below as the historical record — substitute the new names when navigating.
 
 ADR-001 Decision 6 established JSON-RPC over stdio as the plugin protocol. ADR-002 Decision 8 established fail-open pre-push hooks. The next question was: where does a plugin's source code live?
 

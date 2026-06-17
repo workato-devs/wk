@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
+	wkerrors "github.com/workato-devs/wk/internal/errors"
 )
 
 func TestAPIError_Is(t *testing.T) {

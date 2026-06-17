@@ -1,8 +1,30 @@
 # wk
 
-> 🟢 **Beta — Design Partner Program**
+The CLI component of the [Workato Labs](https://github.com/workato-devs/labs) toolkit — workspace operations, recipe sync, and plugin system. See the Labs README for the full toolkit overview.
 
-The CLI component of the [Workato Labs](https://github.com/workato-devs/labs) toolkit — workspace operations, recipe sync, and plugin system. See the Labs README for install instructions and the full toolkit overview.
+## Install
+
+Install with a package manager — this is the supported path and keeps `wk` up to date.
+
+**macOS / Linux (Homebrew):**
+
+```sh
+brew install workato-devs/tap/wk
+```
+
+**Windows (Scoop):**
+
+```sh
+scoop bucket add workato https://github.com/workato-devs/scoop-bucket
+scoop install workato/wk
+```
+
+Upgrade later with `brew upgrade wk` or `scoop update wk`.
+
+> Go developers can `go install github.com/workato-devs/wk@latest`, but Homebrew
+> and Scoop are the recommended channels. Pre-built binaries are attached to each
+> [GitHub Release](https://github.com/workato-devs/wk/releases) and feed the
+> Homebrew/Scoop packages — you don't need to download them manually.
 
 ## Getting started
 
@@ -218,6 +240,28 @@ name = "lint"
 description = "Validate recipe files"
 method = "lint.run"
 ```
+
+## Working safely
+
+**The CLI can modify your Workato workspace.** Commands like `push`, `recipes
+start`, `recipes stop`, `recipes delete`, `connections delete`, and `folders
+delete` make real changes. We recommend working in a Developer Sandbox or
+non-production workspace.
+
+The CLI includes a workspace isolation check (`wk.toml` workspace vs. active
+profile) that prevents accidental cross-workspace operations, but it is not a
+substitute for environment discipline.
+
+## Current limitations
+
+These are tracked in the [ROADMAP](./docs/ROADMAP.md) but are not yet available:
+
+- **Auth Tier 1** — external secrets-manager backends (Vault, AWS Secrets Manager, Doppler)
+- **Auth Tier 4** — encrypted file-based credential store
+- **`wk auth rotate`** — credential rotation
+- **`wk migrate`** — automated migration from the legacy Python CLI
+- **`--toml` output format** — `--json` and text tables are supported
+- **`--no-color`** — accepted on all commands but currently a no-op
 
 ## Development (CLI internals only)
 

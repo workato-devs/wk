@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/workato-devs/wk-cli-beta/internal/config"
+	"github.com/workato-devs/wk/internal/config"
 )
 
 // RefreshState is the per-entry outcome of `wk sync refresh` (ADR-007

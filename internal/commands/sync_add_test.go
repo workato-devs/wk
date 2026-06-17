@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/workato-devs/wk-cli-beta/internal/config"
+	"github.com/workato-devs/wk/internal/config"
 )
 
 // writeProjectSkel creates a minimal wk project at cwd with the given sync

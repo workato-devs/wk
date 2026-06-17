@@ -35,7 +35,7 @@ In CI, determinism beats keystroke economy. Making a pipeline success
 depend on a prompt that never fires, or on remote state that might not be
 populated yet, introduces flakiness. Failing loudly on a missing required
 flag is the safer default. See
-[ADR-006 Sub-decision 10](./ADR-006-profile-identity-model.md#10-non-interactive-mode-behavior).
+[ADR-006 Sub-decision 10](./adrs/ADR-006-profile-identity-model.md#10-non-interactive-mode-behavior).
 
 ## Minimum invocation in CI
 
@@ -129,7 +129,7 @@ skipped by the idempotent append.
 
 ## See also
 
-- [ADR-006 — Profile identity model](./ADR-006-profile-identity-model.md)
+- [ADR-006 — Profile identity model](./adrs/ADR-006-profile-identity-model.md)
   for the full design rationale, including why `/users/me` introspection
   is always enabled and `/activity_logs` environment introspection is
   deferred.

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/workato-devs/wk-cli-beta/internal/config"
+	"github.com/workato-devs/wk/internal/config"
 )
 
 func TestRegionIsValid(t *testing.T) {

@@ -63,7 +63,7 @@ func (s *packageService) Import(ctx context.Context, folderID int, data []byte, 
 	}
 
 	req.Header.Set("Authorization", "Bearer "+s.client.token)
-	req.Header.Set("User-Agent", "wk-cli/dev")
+	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Content-Type", "application/octet-stream")
 
 	if s.client.verbose {

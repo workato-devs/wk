@@ -11,12 +11,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/workato-devs/wk-cli-beta/internal/api"
-	"github.com/workato-devs/wk-cli-beta/internal/auth"
-	"github.com/workato-devs/wk-cli-beta/internal/config"
-	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
-	"github.com/workato-devs/wk-cli-beta/internal/output"
-	"github.com/workato-devs/wk-cli-beta/internal/plugin"
+	"github.com/workato-devs/wk/internal/api"
+	"github.com/workato-devs/wk/internal/auth"
+	"github.com/workato-devs/wk/internal/config"
+	wkerrors "github.com/workato-devs/wk/internal/errors"
+	"github.com/workato-devs/wk/internal/output"
+	"github.com/workato-devs/wk/internal/plugin"
 )
 
 // ExitCodeError is returned when a plugin reports a non-zero exit code.

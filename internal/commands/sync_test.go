@@ -3,7 +3,7 @@ package commands
 import (
 	"testing"
 
-	"github.com/workato-devs/wk-cli-beta/internal/config"
+	"github.com/workato-devs/wk/internal/config"
 )
 
 func TestResolveSyncEntries(t *testing.T) {

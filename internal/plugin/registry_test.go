@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
+	wkerrors "github.com/workato-devs/wk/internal/errors"
 )
 
 func TestRegistryInstallListRemove(t *testing.T) {

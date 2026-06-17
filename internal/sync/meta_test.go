@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/workato-devs/wk-cli-beta/internal/config"
+	"github.com/workato-devs/wk/internal/config"
 )
 
 func TestComputeHash(t *testing.T) {

@@ -3,7 +3,7 @@ package api
 import (
 	"fmt"
 
-	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
+	wkerrors "github.com/workato-devs/wk/internal/errors"
 )
 
 // APIError represents an error response from the Workato API.

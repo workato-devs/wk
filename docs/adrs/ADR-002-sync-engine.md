@@ -1,8 +1,8 @@
 # ADR-002: Sync Engine — RLCM-Based Pull/Push with Sidecar Metadata
 
+**Author(s):** Zayne Turner
 **Status:** Accepted
 **Date:** March 3, 2026
-**Author:** Zayne Turner
 **Deciders:** DevRel Engineering
 **References:** ADR-001 (Foundational Architecture), PRD Section "Sync Engine Design"
 

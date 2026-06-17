@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/workato-devs/wk-cli-beta/internal/api"
-	"github.com/workato-devs/wk-cli-beta/internal/config"
+	"github.com/workato-devs/wk/internal/api"
+	"github.com/workato-devs/wk/internal/config"
 )
 
 // refreshMockFolders lets each test case stub List behavior per-parent

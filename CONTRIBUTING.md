@@ -1,4 +1,4 @@
-# Contributing to wk-cli
+# Contributing to wk
 
 ## API Resource Lifecycle
 
@@ -35,3 +35,16 @@ go test ./internal/api/... ./internal/sync/... ./internal/commands/...
 ```
 
 If any of the coverage tests fail, the error message tells you exactly what to fix and where.
+
+## Architecture Decision Records
+
+Architectural decisions live in `docs/adrs/` as ADRs. How we use them — header schema,
+in-place dated amendments, and authorship (`Author(s)` vs `Amended-by`) — is
+documented in [ADR-000](./docs/adrs/ADR-000-how-we-use-adrs.md). The
+[ADR index](./docs/adrs/README.md) lists them all; start a new one from
+[ADR-TEMPLATE.md](./docs/adrs/ADR-TEMPLATE.md).
+
+**ADRs are living hypotheses — verify against the code before relying on a claim,
+even one marked `Accepted`.** If your change alters behavior an ADR documents,
+amend that ADR *in the same PR* (don't rewrite history — layer a dated amendment
+on top and add an Amendments log line).

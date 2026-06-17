@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
+	wkerrors "github.com/workato-devs/wk/internal/errors"
 )
 
 // discoverRow is the structured form of a wk sync discover row. Emitted

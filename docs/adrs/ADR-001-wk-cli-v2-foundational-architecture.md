@@ -1,8 +1,8 @@
 # ADR-001: Workato CLI v2 (`wk`) — Foundational Architecture
 
+**Author(s):** Zayne Turner
 **Status:** Proposed
 **Date:** March 3, 2026
-**Author:** Zayne Turner
 **Deciders:** DevRel Engineering, Platform CLI Team, Developer Experience Lead
 **Supersedes:** n/a (greenfield rewrite)
 

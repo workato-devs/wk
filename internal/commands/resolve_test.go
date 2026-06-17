@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/workato-devs/wk-cli-beta/internal/auth"
-	"github.com/workato-devs/wk-cli-beta/internal/config"
+	"github.com/workato-devs/wk/internal/auth"
+	"github.com/workato-devs/wk/internal/config"
 )
 
 func TestCheckProfileMatch_Mismatch_KeychainProfile(t *testing.T) {

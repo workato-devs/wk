@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/workato-devs/wk-cli-beta/internal/api"
+	"github.com/workato-devs/wk/internal/api"
 )
 
 // Client is an MCP protocol client using Streamable HTTP transport.
@@ -56,7 +56,7 @@ func (c *Client) Initialize(ctx context.Context) (*api.MCPServerInfo, error) {
 			"protocolVersion": "2025-03-26",
 			"capabilities":    map[string]any{},
 			"clientInfo": map[string]any{
-				"name":    "wk-cli",
+				"name":    "wk",
 				"version": "dev",
 			},
 		},

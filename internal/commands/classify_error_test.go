@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
+	wkerrors "github.com/workato-devs/wk/internal/errors"
 )
 
 func TestClassifyError_AuthSentinels(t *testing.T) {

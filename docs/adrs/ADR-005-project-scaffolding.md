@@ -1,10 +1,14 @@
 # ADR-005: Project Scaffolding — Container Folder, `.wk/` Directory, and Ignore Semantics
 
+**Author(s):** Zayne Turner
 **Status:** Accepted (Issue #29 follow-up superseded by ADR-007)
 **Date:** March 26, 2026 (revised April 8, 2026; implemented April 17, 2026)
-**Author:** Zayne Turner
 **Deciders:** DevRel Engineering
 **References:** ADR-001 (Foundational Architecture), ADR-002 (Sync Engine), ADR-007 (Greenfield Onboarding), Tester Feedback (Greenfield Project Setup)
+
+**Amendments:**
+- April 8, 2026 — Sidecar metadata location integrated into the main body; added folder ID caching, init overwrite behavior, and `.wkignore` support.
+- April 2026 — Partially superseded by ADR-007: single-entry init flags (`--server-path`/`--local-path`) removed, `--overwrite` now replaces `[[sync]]` entries, incremental sync-entry management moved to the `wk sync` group. See note below.
 
 > This revision supersedes the April 1, 2026 amendment on sidecar metadata location by integrating those decisions into the main body. It also adds decisions for folder ID caching, init overwrite behavior, and `.wkignore` support.
 >

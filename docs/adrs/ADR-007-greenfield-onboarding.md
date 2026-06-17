@@ -1,8 +1,8 @@
 # ADR-007: Greenfield Project Onboarding — Sync Entry Lifecycle and Push-Create-on-Demand
 
+**Author(s):** Zayne Turner
 **Status:** Accepted
 **Date:** April 18, 2026 (revised April 20, 2026; implemented April 20, 2026)
-**Author:** Zayne Turner
 **Deciders:** DevRel Engineering
 **References:** ADR-002 (Sync Engine), ADR-005 (Project Scaffolding), ADR-006 (Profile Identity Model), Issue #29 (init sync-entry ergonomics), dewy-resort demo repo
 

@@ -10,10 +10,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/workato-devs/wk-cli-beta/internal/api"
-	"github.com/workato-devs/wk-cli-beta/internal/auth"
-	"github.com/workato-devs/wk-cli-beta/internal/config"
-	"github.com/workato-devs/wk-cli-beta/internal/term"
+	"github.com/workato-devs/wk/internal/api"
+	"github.com/workato-devs/wk/internal/auth"
+	"github.com/workato-devs/wk/internal/config"
+	"github.com/workato-devs/wk/internal/term"
 )
 
 func newAuthCmd() *cobra.Command {
