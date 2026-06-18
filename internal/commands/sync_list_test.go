@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/workato-devs/wk-cli-beta/internal/config"
-	"github.com/workato-devs/wk-cli-beta/internal/sync"
+	"github.com/workato-devs/wk/internal/config"
+	"github.com/workato-devs/wk/internal/sync"
 )
 
 func TestSyncList_DefaultSmoke(t *testing.T) {

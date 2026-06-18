@@ -1,4 +1,4 @@
-module github.com/workato-devs/wk-cli-beta
+module github.com/workato-devs/wk
 
 go 1.23.0
 

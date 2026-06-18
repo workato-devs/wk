@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/workato-devs/wk-cli-beta/internal/api"
-	"github.com/workato-devs/wk-cli-beta/internal/config"
-	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
+	"github.com/workato-devs/wk/internal/api"
+	"github.com/workato-devs/wk/internal/config"
+	wkerrors "github.com/workato-devs/wk/internal/errors"
 )
 
 // pollInterval is the delay between status checks when waiting for

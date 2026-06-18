@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/workato-devs/wk-cli-beta/internal/mcp"
+	"github.com/workato-devs/wk/internal/mcp"
 )
 
 func newMCPCmd() *cobra.Command {

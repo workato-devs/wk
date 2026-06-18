@@ -3,8 +3,8 @@ package commands
 import (
 	"testing"
 
-	"github.com/workato-devs/wk-cli-beta/internal/config"
-	"github.com/workato-devs/wk-cli-beta/internal/sync"
+	"github.com/workato-devs/wk/internal/config"
+	"github.com/workato-devs/wk/internal/sync"
 )
 
 // TestSyncRefresh_EmptyConfigNoCrash guards the early-exit path — with no

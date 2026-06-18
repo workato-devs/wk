@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/workato-devs/wk-cli-beta/internal/api"
-	"github.com/workato-devs/wk-cli-beta/internal/config"
+	"github.com/workato-devs/wk/internal/api"
+	"github.com/workato-devs/wk/internal/config"
 )
 
 // createMockFolders mocks the Workato folders endpoint with a

@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
+	wkerrors "github.com/workato-devs/wk/internal/errors"
 )
 
 // Registry manages installed plugins on disk at ~/.wk/plugins/.

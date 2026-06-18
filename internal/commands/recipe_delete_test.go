@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/workato-devs/wk-cli-beta/internal/config"
-	"github.com/workato-devs/wk-cli-beta/internal/sync"
+	"github.com/workato-devs/wk/internal/config"
+	"github.com/workato-devs/wk/internal/sync"
 )
 
 // seedRecipeLocals writes a .recipe.json + .meta.json sidecar pair for the given

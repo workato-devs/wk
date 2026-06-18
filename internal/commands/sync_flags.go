@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/workato-devs/wk-cli-beta/internal/config"
+	"github.com/workato-devs/wk/internal/config"
 )
 
 // SyncEntryFlags backs the unified sync-entry flag surface used by both

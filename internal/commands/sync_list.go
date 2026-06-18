@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
-	"github.com/workato-devs/wk-cli-beta/internal/sync"
+	wkerrors "github.com/workato-devs/wk/internal/errors"
+	"github.com/workato-devs/wk/internal/sync"
 )
 
 // unresolvedFolderID is the placeholder rendered in the default (human)

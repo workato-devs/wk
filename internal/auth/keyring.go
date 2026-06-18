@@ -8,9 +8,13 @@ import (
 
 	"github.com/zalando/go-keyring"
 
-	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
+	wkerrors "github.com/workato-devs/wk/internal/errors"
 )
 
+// keyringService is the OS keychain service name under which credentials are
+// stored. It is intentionally kept as "wk-cli" (rather than "wk") so existing
+// keychain entries remain readable after the wk-cli-beta -> wk rename — the name
+// is internal and never surfaced to users.
 const keyringService = "wk-cli"
 
 // KeyringStore stores credentials in the OS keychain via go-keyring.

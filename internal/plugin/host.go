@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/workato-devs/wk-cli-beta/internal/term"
+	"github.com/workato-devs/wk/internal/term"
 )
 
 // PluginHost manages multiple loaded plugin processes.

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/workato-devs/wk-cli-beta/internal/config"
-	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
+	"github.com/workato-devs/wk/internal/config"
+	wkerrors "github.com/workato-devs/wk/internal/errors"
 )
 
 // ProfilesEnvFile is the fixed filename for the file-based credential store.

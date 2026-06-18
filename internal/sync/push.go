@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/workato-devs/wk-cli-beta/internal/config"
+	"github.com/workato-devs/wk/internal/config"
 )
 
 // PushResult describes what happened to a single file during push.

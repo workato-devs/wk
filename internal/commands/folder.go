@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/workato-devs/wk-cli-beta/internal/api"
+	"github.com/workato-devs/wk/internal/api"
 )
 
 func newFoldersCmd() *cobra.Command {

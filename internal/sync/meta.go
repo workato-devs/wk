@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/workato-devs/wk-cli-beta/internal/config"
+	"github.com/workato-devs/wk/internal/config"
 )
 
 // AssetMeta is the sidecar metadata stored for each synced asset.

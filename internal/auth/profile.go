@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
+	wkerrors "github.com/workato-devs/wk/internal/errors"
 )
 
 // hasDuplicateTarget checks whether any existing profile (with a different

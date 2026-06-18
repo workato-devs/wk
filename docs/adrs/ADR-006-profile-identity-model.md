@@ -1,11 +1,14 @@
 # ADR-006: Profile Identity Model — Workspace & Environment Metadata
 
+**Author(s):** Zayne Turner, Chris Miller
 **Status:** Proposed
 **Date:** April 9, 2026
-**Last Revised:** April 20, 2026
-**Authors:** Zayne Turner, Chris Miller
 **Deciders:** DevRel Engineering, Platform CLI Team
 **References:** ADR-001 (Decision 4: Project Model, Decision 5: Credential Storage), ADR-005 (Decision 8: `.wk/` gitignored)
+
+**Amendments:**
+- April 17, 2026 — Login ergonomics: `--workspace` optional override (introspected from `GET /users/me`), computed `--name` default, `wk.toml` snapshot fields; non-interactive behavior formalized (Sub-decision 10).
+- April 20, 2026 — `profiles.env` moved out of `.wk/` to `<projectRoot>/profiles.env` (Sub-decision 3); Sub-decisions 7–9 updated. See revision history below.
 
 > **Revision history**
 > - **April 17, 2026** — Integrated login ergonomic improvements from field testing: `--workspace` becomes an optional override (introspected from `GET /users/me`), `--name` gains a computed default from `<workspace-slug>-<environment>[-<region>]`, and `wk.toml` is extended with `workspace`, `workspace_id`, `environment`, and `email` as informational snapshot fields (safe because `.wk/` is gitignored per ADR-005). Non-interactive mode behavior formalized as Sub-decision 10. Environment introspection via `/activity_logs` considered and deferred.

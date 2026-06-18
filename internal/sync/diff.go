@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/workato-devs/wk-cli-beta/internal/config"
+	"github.com/workato-devs/wk/internal/config"
 )
 
 // DiffType describes how a local asset differs from its remote counterpart.

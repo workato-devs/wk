@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/workato-devs/wk-cli-beta/internal/auth"
-	"github.com/workato-devs/wk-cli-beta/internal/config"
+	"github.com/workato-devs/wk/internal/auth"
+	"github.com/workato-devs/wk/internal/config"
 )
 
 // seedKeychainWithActive writes a keychain profile and sets it active.

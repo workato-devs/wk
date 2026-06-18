@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/workato-devs/wk-cli-beta/internal/auth"
-	"github.com/workato-devs/wk-cli-beta/internal/config"
+	"github.com/workato-devs/wk/internal/auth"
+	"github.com/workato-devs/wk/internal/config"
 )
 
 // setupTestHome creates a temporary HOME directory with a .wk/profiles.json

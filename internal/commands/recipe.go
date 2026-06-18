@@ -10,11 +10,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/workato-devs/wk-cli-beta/internal/api"
-	"github.com/workato-devs/wk-cli-beta/internal/config"
-	"github.com/workato-devs/wk-cli-beta/internal/output"
-	"github.com/workato-devs/wk-cli-beta/internal/plugin"
-	"github.com/workato-devs/wk-cli-beta/internal/sync"
+	"github.com/workato-devs/wk/internal/api"
+	"github.com/workato-devs/wk/internal/config"
+	"github.com/workato-devs/wk/internal/output"
+	"github.com/workato-devs/wk/internal/plugin"
+	"github.com/workato-devs/wk/internal/sync"
 )
 
 func newRecipesCmd() *cobra.Command {

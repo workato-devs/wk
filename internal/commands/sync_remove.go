@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/workato-devs/wk-cli-beta/internal/config"
-	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
+	"github.com/workato-devs/wk/internal/config"
+	wkerrors "github.com/workato-devs/wk/internal/errors"
 )
 
 // newSyncRemoveCmd removes a [[sync]] entry from wk.toml, optionally

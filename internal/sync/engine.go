@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/workato-devs/wk-cli-beta/internal/api"
-	"github.com/workato-devs/wk-cli-beta/internal/config"
+	"github.com/workato-devs/wk/internal/api"
+	"github.com/workato-devs/wk/internal/config"
 )
 
 // CreateMode controls folderIDForEntry's fallback behavior when the

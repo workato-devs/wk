@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/workato-devs/wk-cli-beta/internal/config"
-	wkerrors "github.com/workato-devs/wk-cli-beta/internal/errors"
+	"github.com/workato-devs/wk/internal/config"
+	wkerrors "github.com/workato-devs/wk/internal/errors"
 )
 
 // PullResult describes what happened to a single file during pull.

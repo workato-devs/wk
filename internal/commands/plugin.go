@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/workato-devs/wk-cli-beta/internal/plugin"
+	"github.com/workato-devs/wk/internal/plugin"
 )
 
 func newPluginsCmd() *cobra.Command {
