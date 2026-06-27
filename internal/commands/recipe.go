@@ -32,6 +32,7 @@ func newRecipesCmd() *cobra.Command {
 	cmd.AddCommand(newRecipesImportCmd())
 	cmd.AddCommand(newRecipesUpdateCmd())
 	cmd.AddCommand(newRecipesDeleteCmd())
+	cmd.AddCommand(newRecipesMoveCmd())
 	cmd.AddCommand(newRecipesJobsCmd())
 	cmd.AddCommand(newRecipesCopyCmd())
 	cmd.AddCommand(newRecipesConnectCmd())
@@ -122,7 +123,7 @@ func newRecipesGetCmd() *cobra.Command {
 		Short: "Get recipe details",
 		Example: `  wk recipes get 12345
   wk recipes get 12345 --json`,
-		Args:  requireArgs(1, "recipe ID is required, e.g.: wk recipes get <id>"),
+		Args: requireArgs(1, "recipe ID is required, e.g.: wk recipes get <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -313,7 +314,7 @@ func newRecipesExportCmd() *cobra.Command {
 		Short: "Export a recipe as JSON",
 		Example: `  wk recipes export 12345
   wk recipes export 12345 -o recipe.json`,
-		Args:  requireArgs(1, "recipe ID is required, e.g.: wk recipes export <id>"),
+		Args: requireArgs(1, "recipe ID is required, e.g.: wk recipes export <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
@@ -355,7 +356,7 @@ func newRecipesImportCmd() *cobra.Command {
 		Short: "Import a recipe from JSON file",
 		Example: `  wk recipes import recipe.json --folder 123
   wk recipes import recipe.json --json`,
-		Args:  requireArgs(1, "file path is required, e.g.: wk recipes import <path>"),
+		Args: requireArgs(1, "file path is required, e.g.: wk recipes import <path>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -591,7 +592,7 @@ func newRecipesCopyCmd() *cobra.Command {
 		Short: "Copy a recipe to a folder",
 		Example: `  wk recipes copy 12345 --to-folder 678
   wk recipes copy 12345 --to-folder 678 --json`,
-		Args:  requireArgs(1, "recipe ID is required, e.g.: wk recipes copy <id>"),
+		Args: requireArgs(1, "recipe ID is required, e.g.: wk recipes copy <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -626,15 +627,54 @@ func newRecipesCopyCmd() *cobra.Command {
 	return cmd
 }
 
+func newRecipesMoveCmd() *cobra.Command {
+	var folderID int
+
+	cmd := &cobra.Command{
+		Use:   "move <id>",
+		Short: "Move a recipe to a different folder",
+		Long: `Move a recipe to a different folder via PUT /recipes/{id}.
+
+Unlike "wk recipes update" — which deliberately ignores folder_id so reused
+export JSON cannot move a recipe by accident — "move" is the explicit opt-in.
+It preserves the recipe ID, job history, and external references (unlike
+copy + delete, which mints a new ID).`,
+		Example: `  wk recipes move 12345 --folder-id 678`,
+		Args:    requireArgs(1, "recipe ID is required, e.g.: wk recipes move <id> --folder-id <id>"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, _, err := resolveAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid recipe ID: %s", args[0])
+			}
+
+			if err := client.Recipes().Move(cmd.Context(), id, folderID); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(os.Stderr, "Recipe %d moved to folder %d\n", id, folderID)
+			return nil
+		},
+	}
+
+	cmd.Flags().IntVar(&folderID, "folder-id", 0, "Target folder ID")
+	_ = cmd.MarkFlagRequired("folder-id")
+	return cmd
+}
+
 func newRecipesConnectCmd() *cobra.Command {
 	var adapter string
 	var connectionID int
 
 	cmd := &cobra.Command{
-		Use:   "update-connection <id>",
-		Short: "Update a recipe's connection",
+		Use:     "update-connection <id>",
+		Short:   "Update a recipe's connection",
 		Example: `  wk recipes update-connection 12345 --adapter salesforce --connection 678`,
-		Args:  requireArgs(1, "recipe ID is required, e.g.: wk recipes update-connection <id>"),
+		Args:    requireArgs(1, "recipe ID is required, e.g.: wk recipes update-connection <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
@@ -675,7 +715,7 @@ func newRecipesUpdateCmd() *cobra.Command {
 file via PUT /api/recipes/:id. The recipe must be stopped — the API rejects
 updates to running recipes. Use "wk recipes stop <id>" first if needed.`,
 		Example: `  wk recipes update 12345 recipe.json`,
-		Args: requireArgs(2, "recipe ID and file path are required, e.g.: wk recipes update <id> <path>"),
+		Args:    requireArgs(2, "recipe ID and file path are required, e.g.: wk recipes update <id> <path>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
@@ -975,8 +1015,8 @@ func newRecipesVersionsCmd() *cobra.Command {
 		Short: "Manage recipe version history",
 		Example: `  wk recipes versions 12345
   wk recipes versions 12345 --json`,
-		Args:  cobra.MinimumNArgs(1),
-		RunE:  runRecipesVersionsList,
+		Args: cobra.MinimumNArgs(1),
+		RunE: runRecipesVersionsList,
 	}
 	cmd.AddCommand(newRecipesVersionsCommentCmd())
 	return cmd
@@ -1028,7 +1068,7 @@ func newRecipesVersionsCommentCmd() *cobra.Command {
 		Use:     "comment <recipe_id> <version_id> <comment>",
 		Short:   "Set or update the comment on a recipe version",
 		Example: `  wk recipes versions comment 12345 42 "Fixed connection timeout"`,
-		Args:  requireArgs(3, "recipe ID, version ID, and comment are required, e.g.: wk recipes versions comment <recipe_id> <version_id> <comment>"),
+		Args:    requireArgs(3, "recipe ID, version ID, and comment are required, e.g.: wk recipes versions comment <recipe_id> <version_id> <comment>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {

@@ -12,6 +12,7 @@ type RecipeService interface {
 	Import(ctx context.Context, folderID int, data []byte) (*Recipe, error)
 	Update(ctx context.Context, id int, data []byte) error
 	Delete(ctx context.Context, id int) error
+	Move(ctx context.Context, id, folderID int) error
 	ListJobs(ctx context.Context, recipeID int, opts *JobListOptions) ([]Job, error)
 	GetJob(ctx context.Context, recipeID int, jobID string) (*JobDetail, error)
 	Copy(ctx context.Context, recipeID, folderID int) (*Recipe, error)
@@ -63,7 +64,7 @@ type FolderService interface {
 
 // PackageService defines operations on RLCM packages (export/import).
 type PackageService interface {
-	Export(ctx context.Context, folderID int) (int, error)              // returns package ID
+	Export(ctx context.Context, folderID int) (int, error) // returns package ID
 	ExportStatus(ctx context.Context, packageID int) (*Package, error)
 	Download(ctx context.Context, packageID int) ([]byte, error)
 	Import(ctx context.Context, folderID int, data []byte, restartRecipes bool) (int, error) // returns import ID

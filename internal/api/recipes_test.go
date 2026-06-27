@@ -219,6 +219,38 @@ func TestRecipeService_Update_StringifiesCodeAndConfig(t *testing.T) {
 	}
 }
 
+func TestRecipeService_Move_SendsFolderID(t *testing.T) {
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/recipes/42":
+			// Raw export shape: code/config present, original folder_id.
+			w.Write([]byte(`{"name":"r","folder_id":99,"code":{"x":1},"config":[{"k":"v"}]}`))
+		case r.Method == "PUT" && r.URL.Path == "/recipes/42":
+			json.NewDecoder(r.Body).Decode(&captured)
+			w.Write([]byte(`{"success":true}`))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	if err := client.Recipes().Move(context.Background(), 42, 678); err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	// Unlike Update, Move must send the new folder_id (as a string, matching
+	// Import's convention).
+	if fid, ok := captured["folder_id"].(string); !ok || fid != "678" {
+		t.Errorf("folder_id = %v (%T), want string 678", captured["folder_id"], captured["folder_id"])
+	}
+	if s, ok := captured["code"].(string); !ok || s != `{"x":1}` {
+		t.Errorf("code not stringified; got %T %v", captured["code"], captured["code"])
+	}
+}
+
 func TestRecipeService_Import_BackfillsConfigName(t *testing.T) {
 	var captured map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

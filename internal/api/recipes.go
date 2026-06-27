@@ -99,6 +99,25 @@ func (s *recipeService) Delete(ctx context.Context, id int) error {
 	return s.client.do(ctx, "DELETE", fmt.Sprintf("/recipes/%d", id), nil, nil)
 }
 
+// Move changes a recipe's folder via PUT /recipes/{id} with an explicit
+// folder_id. Update deliberately strips folder_id so reused export JSON
+// cannot move a recipe by accident; Move is the explicit opt-in. It re-sends
+// the recipe's current code/config (fetched via Export) alongside the new
+// folder_id, so the recipe ID, job history, and external references are all
+// preserved — unlike copy+delete, which mints a new ID.
+func (s *recipeService) Move(ctx context.Context, id, folderID int) error {
+	data, err := s.Export(ctx, id)
+	if err != nil {
+		return fmt.Errorf("fetching recipe %d: %w", id, err)
+	}
+	body, err := s.decodeAndResolve(ctx, data)
+	if err != nil {
+		return err
+	}
+	body["folder_id"] = strconv.Itoa(folderID)
+	return s.client.do(ctx, "PUT", fmt.Sprintf("/recipes/%d", id), body, nil)
+}
+
 // decodeAndResolve unmarshals recipe JSON, resolves any connection reference
 // objects in config to integer IDs, backfills missing "name" fields from
 // "provider", then stringifies code/config for the API.
@@ -329,4 +348,3 @@ func (s *recipeService) RepeatJobs(ctx context.Context, recipeID int, jobIDs []s
 	}
 	return &result, nil
 }
-
