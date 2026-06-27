@@ -1,7 +1,10 @@
 package commands
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -217,6 +220,7 @@ func newRecipesStartCmd() *cobra.Command {
 					time.Sleep(interval)
 				}
 				if !started {
+					surfaceActivationFailure(cmd, client, id, timeout)
 					return fmt.Errorf("recipe %d did not become active within %s", id, timeout)
 				}
 			}
@@ -270,6 +274,13 @@ func newRecipesPullCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pull <id>",
 		Short: "Pull a single recipe by ID (bypasses package export)",
+		Long: `Pull a single recipe by ID, bypassing the full package export.
+
+The output is the canonical project recipe format (code as an object, with
+version/private/concurrency), so it passes wk lint and can be committed as a
+project recipe file. Because the per-recipe API endpoint does not expose
+"private" or "concurrency", those fall back to the platform defaults
+(false / 1) — use a full "wk pull" when faithful values matter.`,
 		Example: `  wk recipes pull 12345
   wk recipes pull 12345 -o recipe.json`,
 		Args: requireArgs(1, "recipe ID is required, e.g.: wk recipes pull <id>"),
@@ -284,7 +295,11 @@ func newRecipesPullCmd() *cobra.Command {
 				return fmt.Errorf("invalid recipe ID: %s", args[0])
 			}
 
-			data, err := client.Recipes().Export(cmd.Context(), id)
+			raw, err := client.Recipes().Export(cmd.Context(), id)
+			if err != nil {
+				return err
+			}
+			data, err := api.CanonicalizeRecipeExport(raw)
 			if err != nil {
 				return err
 			}
@@ -312,6 +327,13 @@ func newRecipesExportCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "export <id>",
 		Short: "Export a recipe as JSON",
+		Long: `Export a single recipe as canonical project recipe JSON.
+
+The output matches the project recipe format (code as an object, with
+version/private/concurrency) so it passes wk lint. The per-recipe API
+endpoint does not expose "private" or "concurrency", so those fall back to
+the platform defaults (false / 1) — use a full "wk pull" when faithful values
+matter.`,
 		Example: `  wk recipes export 12345
   wk recipes export 12345 -o recipe.json`,
 		Args: requireArgs(1, "recipe ID is required, e.g.: wk recipes export <id>"),
@@ -326,7 +348,11 @@ func newRecipesExportCmd() *cobra.Command {
 				return fmt.Errorf("invalid recipe ID: %s", args[0])
 			}
 
-			data, err := client.Recipes().Export(cmd.Context(), id)
+			raw, err := client.Recipes().Export(cmd.Context(), id)
+			if err != nil {
+				return err
+			}
+			data, err := api.CanonicalizeRecipeExport(raw)
 			if err != nil {
 				return err
 			}
@@ -1145,4 +1171,93 @@ The recipe-lint plugin must be installed (wk plugins install <path>).`,
 	cmd.Flags().String("skills-path", "", "Path to connector skills directory")
 	cmd.Flags().String("config-path", "", "Path to lint configuration file")
 	return cmd
+}
+
+// errRecipeLintUnavailable signals the recipe-lint plugin is not installed,
+// so callers can degrade to a textual hint instead of failing.
+var errRecipeLintUnavailable = errors.New("recipe-lint plugin not installed")
+
+// surfaceActivationFailure turns an opaque "did not become active" timeout
+// into something actionable (issue #70). A 200 from PUT /recipes/{id}/start
+// acknowledges the request, not successful activation; the recipe may have
+// unresolved step warnings (disconnected connections, invalid datapills) that
+// are otherwise only visible in the Workato editor. As a CLI-only fallback we
+// export the recipe definition and run it through the recipe-lint validator,
+// streaming any findings to stderr. Best-effort: every failure here degrades
+// to a hint, since the caller still returns the underlying timeout error.
+func surfaceActivationFailure(cmd *cobra.Command, client api.Client, id int, timeout time.Duration) {
+	fmt.Fprintf(os.Stderr, "\nRecipe %d accepted the start request but did not reach running state within %s.\n", id, timeout)
+	fmt.Fprintln(os.Stderr, "The start endpoint acknowledges the request, not successful activation — the recipe likely has unresolved step warnings (disconnected connections, invalid datapills, missing fields).")
+
+	raw, err := client.Recipes().Export(cmd.Context(), id)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Open the recipe in the Workato editor to read the step-level warnings blocking activation.")
+		return
+	}
+	canonical, err := api.CanonicalizeRecipeExport(raw)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Open the recipe in the Workato editor to read the step-level warnings blocking activation.")
+		return
+	}
+
+	tmp, err := os.CreateTemp("", fmt.Sprintf("wk-recipe-%d-*.recipe.json", id))
+	if err != nil {
+		return
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(canonical); err != nil {
+		tmp.Close()
+		return
+	}
+	tmp.Close()
+
+	fmt.Fprintln(os.Stderr, "\nValidating the recipe definition (equivalent to wk recipes validate):")
+	result, lintErr := lintRecipeFile(tmp.Name())
+	switch {
+	case errors.Is(lintErr, errRecipeLintUnavailable):
+		fmt.Fprintln(os.Stderr, "  recipe-lint plugin not installed — install it (wk plugins install <path>) and re-run, or open the recipe in the Workato editor to read the step warnings.")
+	case lintErr != nil:
+		fmt.Fprintf(os.Stderr, "  validation could not run: %v\n", lintErr)
+	default:
+		printLintResult(os.Stderr, result)
+	}
+}
+
+// lintRecipeFile runs the recipe-lint plugin's lint.run on path and returns
+// the raw result envelope, or errRecipeLintUnavailable when the plugin is not
+// installed. It invokes the plugin host directly (rather than makePluginRunE)
+// because the calling command does not declare the lint flags.
+func lintRecipeFile(path string) (json.RawMessage, error) {
+	reg, err := plugin.NewRegistry()
+	if err != nil {
+		return nil, errRecipeLintUnavailable
+	}
+	dir, err := reg.GetPluginDir("recipe-lint")
+	if err != nil {
+		return nil, errRecipeLintUnavailable
+	}
+
+	host := plugin.NewPluginHost()
+	defer host.StopAll()
+	if err := host.Load(dir); err != nil {
+		return nil, fmt.Errorf("loading recipe-lint plugin: %w", err)
+	}
+	m, _ := plugin.LoadManifest(filepath.Join(dir, "plugin.toml"))
+	if m == nil {
+		return nil, fmt.Errorf("cannot read recipe-lint manifest")
+	}
+	return host.Execute(m.Name, "lint.run", map[string]any{"files": []string{path}})
+}
+
+// printLintResult renders the lint envelope as indented JSON, falling back to
+// the raw bytes if it does not parse.
+func printLintResult(w io.Writer, result json.RawMessage) {
+	var v any
+	if json.Unmarshal(result, &v) == nil {
+		if b, err := json.MarshalIndent(v, "  ", "  "); err == nil {
+			fmt.Fprintf(w, "  %s\n", b)
+			return
+		}
+	}
+	fmt.Fprintf(w, "  %s\n", string(result))
 }

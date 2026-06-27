@@ -118,6 +118,80 @@ func (s *recipeService) Move(ctx context.Context, id, folderID int) error {
 	return s.client.do(ctx, "PUT", fmt.Sprintf("/recipes/%d", id), body, nil)
 }
 
+// CanonicalizeRecipeExport converts the raw GET /recipes/{id} response into
+// the project recipe file format produced by the package-export path
+// (wk pull) and required by wk lint. The single-recipe endpoint differs from
+// the package format in ways that otherwise make its output fail lint:
+//
+//   - "code" is returned as an escaped JSON string; lint requires an object.
+//   - the recipe version is exposed as "version_no"; the project format key
+//     is "version".
+//   - "private" and "concurrency" are not returned by this endpoint at all,
+//     so they fall back to the platform defaults (false / 1). Faithful values
+//     for these two require the package export (wk pull).
+//
+// Runtime-only fields from the GET response (job counts, webhook_url, etc.)
+// are intentionally dropped: a project recipe file is a definition, not a
+// status snapshot, matching what wk pull writes.
+func CanonicalizeRecipeExport(raw []byte) ([]byte, error) {
+	var src map[string]any
+	if err := json.Unmarshal(raw, &src); err != nil {
+		return nil, fmt.Errorf("parsing recipe export: %w", err)
+	}
+
+	out := map[string]any{
+		"name":        src["name"],
+		"description": src["description"],
+		"private":     false,
+		"concurrency": 1,
+	}
+
+	if v, ok := src["config"]; ok {
+		out["config"] = v
+	} else {
+		out["config"] = []any{}
+	}
+
+	// code: parse the escaped JSON string into an object. If it is already an
+	// object (defensive — a future API change), keep it as-is.
+	switch c := src["code"].(type) {
+	case string:
+		var decoded any
+		if err := json.Unmarshal([]byte(c), &decoded); err != nil {
+			return nil, fmt.Errorf("parsing recipe \"code\" string: %w", err)
+		}
+		out["code"] = decoded
+	case nil:
+		// No code field — don't fabricate one; lint will surface it.
+	default:
+		out["code"] = c
+	}
+
+	// version: prefer an explicit "version", else map the endpoint's
+	// "version_no".
+	if v, ok := src["version"]; ok {
+		out["version"] = v
+	} else if v, ok := src["version_no"]; ok {
+		out["version"] = v
+	} else {
+		out["version"] = 0
+	}
+
+	// Honor real values if a future API revision starts returning them.
+	if v, ok := src["private"]; ok {
+		out["private"] = v
+	}
+	if v, ok := src["concurrency"]; ok {
+		out["concurrency"] = v
+	}
+
+	formatted, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(formatted, '\n'), nil
+}
+
 // decodeAndResolve unmarshals recipe JSON, resolves any connection reference
 // objects in config to integer IDs, backfills missing "name" fields from
 // "provider", then stringifies code/config for the API.

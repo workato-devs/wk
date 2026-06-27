@@ -219,6 +219,62 @@ func TestRecipeService_Update_StringifiesCodeAndConfig(t *testing.T) {
 	}
 }
 
+func TestCanonicalizeRecipeExport(t *testing.T) {
+	// Raw GET /recipes/{id} shape: code is an escaped JSON string, the
+	// version is "version_no", private/concurrency are absent, and runtime
+	// fields (job counts) are present.
+	raw := []byte(`{
+		"id": 271230,
+		"name": "my recipe",
+		"description": "desc",
+		"folder_id": 99,
+		"code": "{\"number\":0,\"provider\":\"clock\"}",
+		"config": [{"keyword":"trigger","provider":"clock","name":"clock"}],
+		"version_no": 7,
+		"job_succeeded_count": 5,
+		"webhook_url": "https://example.com/hook"
+	}`)
+
+	out, err := CanonicalizeRecipeExport(raw)
+	if err != nil {
+		t.Fatalf("CanonicalizeRecipeExport: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("output not valid JSON: %v", err)
+	}
+
+	// code must be an object, not an escaped string (lint CODE_NOT_OBJECT).
+	if _, ok := got["code"].(map[string]any); !ok {
+		t.Errorf("code = %T, want object", got["code"])
+	}
+	// All required top-level keys present (lint MISSING_TOP_LEVEL_KEYS).
+	for _, k := range []string{"version", "private", "concurrency", "name", "config"} {
+		if _, ok := got[k]; !ok {
+			t.Errorf("missing required key %q", k)
+		}
+	}
+	// version_no maps to version.
+	if v, ok := got["version"].(float64); !ok || v != 7 {
+		t.Errorf("version = %v, want 7 (from version_no)", got["version"])
+	}
+	// platform defaults for fields the endpoint omits.
+	if got["private"] != false {
+		t.Errorf("private = %v, want false", got["private"])
+	}
+	if v, ok := got["concurrency"].(float64); !ok || v != 1 {
+		t.Errorf("concurrency = %v, want 1", got["concurrency"])
+	}
+	// runtime-only fields are dropped.
+	if _, ok := got["job_succeeded_count"]; ok {
+		t.Error("job_succeeded_count should be dropped from canonical output")
+	}
+	if _, ok := got["webhook_url"]; ok {
+		t.Error("webhook_url should be dropped from canonical output")
+	}
+}
+
 func TestRecipeService_Move_SendsFolderID(t *testing.T) {
 	var captured map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
