@@ -71,6 +71,25 @@ func TestAPICollectionService_Create(t *testing.T) {
 	}
 }
 
+func TestAPICollectionService_Delete(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "DELETE" {
+			t.Errorf("method = %s, want DELETE", r.Method)
+		}
+		if r.URL.Path != "/api_collections/42" {
+			t.Errorf("path = %s, want /api_collections/42", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{"success": true}})
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	if err := client.APICollections().Delete(context.Background(), 42); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestAPICollectionService_CreateWithoutProject(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any

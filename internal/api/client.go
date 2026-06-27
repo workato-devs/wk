@@ -63,7 +63,7 @@ type FolderService interface {
 
 // PackageService defines operations on RLCM packages (export/import).
 type PackageService interface {
-	Export(ctx context.Context, folderID int) (int, error)              // returns package ID
+	Export(ctx context.Context, folderID int) (int, error) // returns package ID
 	ExportStatus(ctx context.Context, packageID int) (*Package, error)
 	Download(ctx context.Context, packageID int) ([]byte, error)
 	Import(ctx context.Context, folderID int, data []byte, restartRecipes bool) (int, error) // returns import ID
@@ -93,6 +93,7 @@ type APIClientService interface {
 type APICollectionService interface {
 	List(ctx context.Context, opts *PaginationOptions) ([]APICollection, error)
 	Create(ctx context.Context, name string, projectID *int) (*APICollection, error)
+	Delete(ctx context.Context, id int) error
 }
 
 // APIEndpointService defines operations on API endpoints.

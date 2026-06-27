@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strconv"
 )
@@ -43,4 +44,8 @@ func (s *apiCollectionService) Create(ctx context.Context, name string, projectI
 		return nil, err
 	}
 	return &collection, nil
+}
+
+func (s *apiCollectionService) Delete(ctx context.Context, id int) error {
+	return s.client.do(ctx, "DELETE", fmt.Sprintf("/api_collections/%d", id), nil, nil)
 }

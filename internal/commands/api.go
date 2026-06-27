@@ -35,6 +35,7 @@ func newAPICollectionsCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newAPICollectionsListCmd())
 	cmd.AddCommand(newAPICollectionsCreateCmd())
+	cmd.AddCommand(newAPICollectionsDeleteCmd())
 	return cmd
 }
 
@@ -159,6 +160,42 @@ Flags (--name, --project) override file values.`,
 	cmd.Flags().IntVar(&projectID, "project", 0, "Project ID")
 	cmd.Flags().StringVar(&fromFile, "from-file", "", "JSON file with collection definition")
 	return cmd
+}
+
+func newAPICollectionsDeleteCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Delete an API collection",
+		Example: `  wk api collections delete 42
+  wk api collections delete 42 --json`,
+		Args: requireArgs(1, "collection ID is required, e.g.: wk api collections delete <id>"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rctx, err := BuildRunContext(cmd)
+			if err != nil {
+				return err
+			}
+			client, _, err := resolveAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid collection ID: %s", args[0])
+			}
+
+			if err := client.APICollections().Delete(cmd.Context(), id); err != nil {
+				return err
+			}
+
+			if flagJSON {
+				return rctx.Formatter.Format(os.Stdout, map[string]any{"id": id, "deleted": true})
+			}
+
+			fmt.Fprintf(os.Stderr, "Deleted API collection %d\n", id)
+			return nil
+		},
+	}
 }
 
 func newAPIEndpointsCmd() *cobra.Command {
@@ -546,7 +583,7 @@ func newAPIEndpointsEnableCmd() *cobra.Command {
 		Use:     "enable <id>",
 		Short:   "Enable an API endpoint",
 		Example: `  wk api endpoints enable 789`,
-		Args:  requireArgs(1, "endpoint ID is required, e.g.: wk api endpoints enable <id>"),
+		Args:    requireArgs(1, "endpoint ID is required, e.g.: wk api endpoints enable <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
@@ -573,7 +610,7 @@ func newAPIEndpointsDisableCmd() *cobra.Command {
 		Use:     "disable <id>",
 		Short:   "Disable an API endpoint",
 		Example: `  wk api endpoints disable 789`,
-		Args:  requireArgs(1, "endpoint ID is required, e.g.: wk api endpoints disable <id>"),
+		Args:    requireArgs(1, "endpoint ID is required, e.g.: wk api endpoints disable <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
@@ -982,4 +1019,3 @@ func resolveRecipeNameInEndpointJSON(ctx context.Context, client api.Client, dat
 	delete(body, "recipe_name")
 	return json.Marshal(body)
 }
-
