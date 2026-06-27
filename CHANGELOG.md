@@ -6,8 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.1.0-beta] - 2026-04-21
 
-Initial beta release. See [ROADMAP.md](./docs/ROADMAP.md) for detailed feature
-status and remaining work.
+Initial beta release.
 
 ### Added
 

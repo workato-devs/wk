@@ -254,7 +254,7 @@ substitute for environment discipline.
 
 ## Current limitations
 
-These are tracked in the [ROADMAP](./docs/ROADMAP.md) but are not yet available:
+These features are planned but not yet available:
 
 - **Auth Tier 1** — external secrets-manager backends (Vault, AWS Secrets Manager, Doppler)
 - **Auth Tier 4** — encrypted file-based credential store
