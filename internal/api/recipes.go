@@ -18,9 +18,10 @@ func (s *recipeService) List(ctx context.Context, opts *RecipeListOptions) ([]Re
 		if opts.FolderID != nil {
 			params.Set("folder_id", strconv.Itoa(*opts.FolderID))
 		}
-		if opts.Status == "running" {
+		switch opts.Status {
+		case "running":
 			params.Set("active", "true")
-		} else if opts.Status == "stopped" {
+		case "stopped":
 			params.Set("active", "false")
 		}
 		if opts.Page > 0 {

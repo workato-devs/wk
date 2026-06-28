@@ -461,10 +461,7 @@ func TestRecipeService_UpdateVersionComment(t *testing.T) {
 
 func TestRecipeService_UpdateVersionComment_TooLong(t *testing.T) {
 	client := NewHTTPClient("http://unused", "test-token")
-	long := ""
-	for i := 0; i < 256; i++ {
-		long += "x"
-	}
+	long := strings.Repeat("x", 256)
 	_, err := client.Recipes().UpdateVersionComment(context.Background(), 42, 99, long)
 	if err == nil || !strings.Contains(err.Error(), "255-character limit") {
 		t.Errorf("err = %v, want 255-character limit", err)
