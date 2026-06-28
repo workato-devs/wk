@@ -350,11 +350,17 @@ func (s *recipeService) Copy(ctx context.Context, recipeID, folderID int) (*Reci
 	// The API rejects a numeric folder_id ("Must be a String"); send it as a
 	// string, matching Import/Move.
 	body := map[string]any{"folder_id": strconv.Itoa(folderID)}
-	var recipe Recipe
-	if err := s.client.do(ctx, "POST", fmt.Sprintf("/recipes/%d/copy", recipeID), body, &recipe); err != nil {
+	// The copy endpoint returns {"success": true, "new_flow_id": N}, not a
+	// recipe object — decode the new id and fetch the full recipe, mirroring
+	// Import.
+	var result struct {
+		Success   bool `json:"success"`
+		NewFlowID int  `json:"new_flow_id"`
+	}
+	if err := s.client.do(ctx, "POST", fmt.Sprintf("/recipes/%d/copy", recipeID), body, &result); err != nil {
 		return nil, err
 	}
-	return &recipe, nil
+	return s.Get(ctx, result.NewFlowID)
 }
 
 // ListVersions returns the version history for a recipe. Pagination matches

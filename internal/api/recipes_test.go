@@ -81,20 +81,23 @@ func TestRecipeService_GetJob(t *testing.T) {
 
 func TestRecipeService_Copy(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			t.Errorf("method = %s, want POST", r.Method)
-		}
-		if r.URL.Path != "/recipes/42/copy" {
-			t.Errorf("path = %s, want /recipes/42/copy", r.URL.Path)
-		}
-		var body map[string]any
-		json.NewDecoder(r.Body).Decode(&body)
-		// folder_id must be sent as a string; the API rejects a numeric value.
-		if body["folder_id"] != "100" {
-			t.Errorf("folder_id = %#v, want string \"100\"", body["folder_id"])
-		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Recipe{ID: 99, Name: "copy", FolderID: 100})
+		switch {
+		case r.Method == "POST" && r.URL.Path == "/recipes/42/copy":
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			// folder_id must be sent as a string; the API rejects a numeric value.
+			if body["folder_id"] != "100" {
+				t.Errorf("folder_id = %#v, want string \"100\"", body["folder_id"])
+			}
+			// The copy endpoint returns new_flow_id, not a recipe object.
+			w.Write([]byte(`{"success":true,"new_flow_id":99}`))
+		case r.Method == "GET" && r.URL.Path == "/recipes/99":
+			json.NewEncoder(w).Encode(Recipe{ID: 99, Name: "copy", FolderID: 100})
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(404)
+		}
 	}))
 	defer srv.Close()
 
@@ -103,8 +106,13 @@ func TestRecipeService_Copy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	// Copy must return the populated new recipe (regression: it returned a
+	// zero-value Recipe because the 201 body was decoded as a flat recipe).
 	if recipe.ID != 99 {
-		t.Errorf("ID = %d, want 99", recipe.ID)
+		t.Errorf("ID = %d, want 99 (new_flow_id, fetched via Get)", recipe.ID)
+	}
+	if recipe.FolderID != 100 {
+		t.Errorf("FolderID = %d, want 100", recipe.FolderID)
 	}
 }
 
