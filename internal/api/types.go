@@ -322,10 +322,12 @@ type MCPServerTool struct {
 
 // MCPServerPolicy represents rate/quota limits and IP restrictions for an MCP server.
 type MCPServerPolicy struct {
-	ID          *int           `json:"id"`
-	MCPServerID *int           `json:"mcp_server_id"`
-	RateLimits  map[string]int `json:"rate_limits,omitempty"`
-	QuotaLimits map[string]int `json:"quota_limits,omitempty"`
+	ID          *int    `json:"id"`
+	MCPServerID *string `json:"mcp_server_id"`
+	// RateLimits/QuotaLimits are {"limit": <int>, "interval": <string>}
+	// objects; the values are mixed types, so decode into map[string]any.
+	RateLimits  map[string]any `json:"rate_limits,omitempty"`
+	QuotaLimits map[string]any `json:"quota_limits,omitempty"`
 	IPAllowList []string       `json:"ip_allow_list,omitempty"`
 	IPDenyList  []string       `json:"ip_deny_list,omitempty"`
 	CreatedAt   *time.Time     `json:"created_at,omitempty"`

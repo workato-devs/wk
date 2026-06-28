@@ -878,12 +878,15 @@ Only the flags you set are sent; unset fields are left unchanged.`,
 				return err
 			}
 
+			// The API requires both "limit" and "interval" on each limit
+			// object; the --rate-per-minute / --quota-per-day flags imply the
+			// interval.
 			policy := map[string]any{}
 			if cmd.Flags().Changed("rate-per-minute") {
-				policy["rate_limits"] = map[string]int{"per_minute": ratePerMinute}
+				policy["rate_limits"] = map[string]any{"limit": ratePerMinute, "interval": "minute"}
 			}
 			if cmd.Flags().Changed("quota-per-day") {
-				policy["quota_limits"] = map[string]int{"per_day": quotaPerDay}
+				policy["quota_limits"] = map[string]any{"limit": quotaPerDay, "interval": "day"}
 			}
 			if cmd.Flags().Changed("ip-allow") {
 				policy["ip_allow_list"] = ipAllow

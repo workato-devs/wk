@@ -291,6 +291,31 @@ func TestMCPServerService_DeleteTool(t *testing.T) {
 	}
 }
 
+func TestMCPServerService_GetServerPolicies(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" || r.URL.Path != "/mcp/mcp_servers/mcps-x/server_policies" {
+			t.Errorf("got %s %s, want GET .../server_policies", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		// mcp_server_id is a string in the real API (regression: it was
+		// decoded as int and always failed).
+		w.Write([]byte(`{"id":501,"mcp_server_id":"mcps-x","rate_limits":{"limit":60,"interval":"minute"},"ip_allow_list":["203.0.113.0/24"]}`))
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	policy, err := client.MCPServers().GetServerPolicies(context.Background(), "mcps-x")
+	if err != nil {
+		t.Fatalf("GetServerPolicies: %v", err)
+	}
+	if policy.MCPServerID == nil || *policy.MCPServerID != "mcps-x" {
+		t.Errorf("mcp_server_id = %v, want mcps-x", policy.MCPServerID)
+	}
+	if policy.RateLimits["interval"] != "minute" {
+		t.Errorf("rate interval = %v, want minute", policy.RateLimits["interval"])
+	}
+}
+
 func TestMCPServerService_SetServerPolicies(t *testing.T) {
 	var captured map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -302,12 +327,14 @@ func TestMCPServerService_SetServerPolicies(t *testing.T) {
 		}
 		json.NewDecoder(r.Body).Decode(&captured)
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":1,"mcp_server_id":1001,"rate_limits":{"per_minute":30}}`))
+		// The API returns mcp_server_id as a string and limits as
+		// {limit, interval} objects.
+		w.Write([]byte(`{"id":1,"mcp_server_id":"mcps-x","rate_limits":{"limit":30,"interval":"minute"}}`))
 	}))
 	defer srv.Close()
 
 	client := NewHTTPClient(srv.URL, "test-token")
-	policy := map[string]any{"rate_limits": map[string]int{"per_minute": 30}}
+	policy := map[string]any{"rate_limits": map[string]any{"limit": 30, "interval": "minute"}}
 	got, err := client.MCPServers().SetServerPolicies(context.Background(), "mcps-x", policy)
 	if err != nil {
 		t.Fatalf("SetServerPolicies: %v", err)
@@ -316,8 +343,8 @@ func TestMCPServerService_SetServerPolicies(t *testing.T) {
 	if _, ok := captured["mcp_server_policy"].(map[string]any); !ok {
 		t.Errorf("request body missing mcp_server_policy wrapper; got %v", captured)
 	}
-	if got.RateLimits["per_minute"] != 30 {
-		t.Errorf("rate per_minute = %d, want 30", got.RateLimits["per_minute"])
+	if got.RateLimits["limit"] != float64(30) {
+		t.Errorf("rate limit = %v, want 30", got.RateLimits["limit"])
 	}
 }
 
