@@ -346,7 +346,9 @@ func (s *recipeService) GetJob(ctx context.Context, recipeID int, jobID string) 
 }
 
 func (s *recipeService) Copy(ctx context.Context, recipeID, folderID int) (*Recipe, error) {
-	body := map[string]any{"folder_id": folderID}
+	// The API rejects a numeric folder_id ("Must be a String"); send it as a
+	// string, matching Import/Move.
+	body := map[string]any{"folder_id": strconv.Itoa(folderID)}
 	var recipe Recipe
 	if err := s.client.do(ctx, "POST", fmt.Sprintf("/recipes/%d/copy", recipeID), body, &recipe); err != nil {
 		return nil, err

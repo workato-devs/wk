@@ -89,8 +89,9 @@ func TestRecipeService_Copy(t *testing.T) {
 		}
 		var body map[string]any
 		json.NewDecoder(r.Body).Decode(&body)
-		if body["folder_id"] != float64(100) {
-			t.Errorf("folder_id = %v, want 100", body["folder_id"])
+		// folder_id must be sent as a string; the API rejects a numeric value.
+		if body["folder_id"] != "100" {
+			t.Errorf("folder_id = %#v, want string \"100\"", body["folder_id"])
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(Recipe{ID: 99, Name: "copy", FolderID: 100})
