@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -36,6 +37,7 @@ func newAuthLoginCmd() *cobra.Command {
 		workspace   string
 		environment string
 		region      string
+		baseURLFlag string
 		token       string
 		force       bool
 		noInput     bool
@@ -59,7 +61,10 @@ requires --token and --environment explicitly. See ADR-006.`,
   wk auth login --token wrk_abc123 --environment prod --no-input
 
   # Login with explicit region and name
-  wk auth login --token wrk_abc123 --environment dev --region eu --name eu-acme-dev`,
+  wk auth login --token wrk_abc123 --environment dev --region eu --name eu-acme-dev
+
+  # Login against a non-standard / preview environment via a custom base URL
+  wk auth login --token wrk_abc123 --environment dev --base-url https://app.preview.workato.com`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			interactive := isInteractiveStdin() && !noInput && !flagJSON
 			reader := bufio.NewReader(os.Stdin)
@@ -81,30 +86,69 @@ requires --token and --environment explicitly. See ADR-006.`,
 				}
 			}
 
-			// Step 1: token. Prompt only in interactive mode.
+			// Step 1: token. Prompt only in interactive mode, masking the
+			// input so the secret never echoes to the terminal, scrollback,
+			// or a screen-sharing session.
 			if token == "" {
 				fmt.Print("API token: ")
-				line, _ := reader.ReadString('\n')
-				token = strings.TrimSpace(line)
+				masked, err := term.ReadPassword(os.Stdin)
+				if err != nil {
+					return fmt.Errorf("reading API token: %w", err)
+				}
+				token = strings.TrimSpace(masked)
 			}
 			if token == "" {
 				return fmt.Errorf("API token is required")
 			}
 
-			// Step 1b: region. Defaults silently to "us".
+			// Step 1b: region / base URL.
+			//
+			// Region selection is the most common onboarding trap: a valid
+			// non-us token validated against the us base URL returns an opaque
+			// 401. To avoid that, infer the region from a known token prefix
+			// and, in interactive mode, prompt to confirm it (issue #75). An
+			// explicit --region or --base-url skips the prompt.
+			if !cmd.Flags().Changed("region") {
+				if inferred := inferRegionFromToken(token); inferred != "" {
+					region = inferred
+				}
+			}
 			if region == "" {
 				region = config.DefaultRegion
 			}
-			r := auth.Region(region)
-			if !r.IsValid() {
+			if interactive && baseURLFlag == "" && !cmd.Flags().Changed("region") {
 				regions := auth.ValidRegions()
 				names := make([]string, len(regions))
 				for i, rg := range regions {
 					names[i] = string(rg)
 				}
-				return fmt.Errorf("invalid region %q; valid regions: %s", region, strings.Join(names, ", "))
+				fmt.Printf("Region [%s] (%s): ", region, strings.Join(names, ", "))
+				line, _ := reader.ReadString('\n')
+				if entered := strings.TrimSpace(line); entered != "" {
+					region = entered
+				}
 			}
-			baseURL := config.BaseURL(region)
+			r := auth.Region(region)
+
+			// An explicit --base-url bypasses the region allowlist and the
+			// RegionURLs map, enabling non-standard or preview environments
+			// (e.g. https://app.preview.workato.com) that the fixed region
+			// set cannot express (issue #69). The region is retained only as
+			// a freeform label. Without --base-url, the region must validate.
+			var baseURL string
+			if baseURLFlag != "" {
+				baseURL = strings.TrimRight(baseURLFlag, "/")
+			} else {
+				if !r.IsValid() {
+					regions := auth.ValidRegions()
+					names := make([]string, len(regions))
+					for i, rg := range regions {
+						names[i] = string(rg)
+					}
+					return fmt.Errorf("invalid region %q; valid regions: %s (or pass --base-url for a custom environment)", region, strings.Join(names, ", "))
+				}
+				baseURL = config.BaseURL(region)
+			}
 
 			// Step 2: GET /users/me. Populates workspace, workspace_id, email.
 			// Failure here aborts login — a token that can't authenticate is
@@ -112,6 +156,18 @@ requires --token and --environment explicitly. See ADR-006.`,
 			tempClient := api.NewHTTPClient(baseURL+config.APIPathPrefix, token)
 			info, err := tempClient.Workspace().GetCurrentWorkspace(cmd.Context())
 			if err != nil {
+				// A 401 during login is almost never "the token is bad" — it
+				// is usually the wrong region (validating against the wrong
+				// base URL). Name the likely causes so onboarding doesn't
+				// dead-end on a bare "Unauthorized" (issue #75).
+				var apiErr *api.APIError
+				if errors.As(err, &apiErr) && apiErr.IsUnauthorized() {
+					return fmt.Errorf("validating token via /users/me: %w\n\n"+
+						"A 401 here usually means one of:\n"+
+						"  - wrong region: a valid token for a different region than %q fails against its base URL — re-run and select the matching region, or pass --base-url\n"+
+						"  - expired or insufficiently scoped token\n"+
+						"  - token truncated on paste", err, region)
+				}
 				return fmt.Errorf("validating token via /users/me: %w", err)
 			}
 
@@ -234,6 +290,7 @@ requires --token and --environment explicitly. See ADR-006.`,
 	cmd.Flags().StringVarP(&workspace, "workspace", "w", "", "Override workspace; must match the token's workspace (default: introspected from /users/me)")
 	cmd.Flags().StringVarP(&environment, "environment", "e", "", "Target environment (e.g. dev, staging, prod); required in non-interactive mode")
 	cmd.Flags().StringVarP(&region, "region", "r", config.DefaultRegion, "Workato region (us, eu, jp, au, sg, il, cn, trial (Developer Sandbox))")
+	cmd.Flags().StringVar(&baseURLFlag, "base-url", "", "Custom API base URL for non-standard/preview environments; bypasses --region validation")
 	cmd.Flags().StringVarP(&token, "token", "t", "", "Workato API token; required in non-interactive mode")
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "Skip overwrite confirmation if profile already exists")
 	cmd.Flags().BoolVar(&noInput, "no-input", false, "Force non-interactive mode (fail on missing required flags instead of prompting)")
@@ -244,6 +301,17 @@ requires --token and --environment explicitly. See ADR-006.`,
 // user — it requires BOTH stdin and stdout to be attached to a terminal.
 func isInteractiveStdin() bool {
 	return term.IsTerminal(os.Stdin) && term.IsTerminal(os.Stdout)
+}
+
+// inferRegionFromToken maps a known API-token prefix to its region so the
+// interactive default is correct for non-us tokens. Workato Developer Sandbox
+// (trial) tokens carry a "wrkatrial-" prefix; other regions are not
+// distinguishable by prefix today. Returns "" when no prefix matches.
+func inferRegionFromToken(token string) string {
+	if strings.HasPrefix(token, "wrkatrial-") {
+		return string(auth.RegionTrial)
+	}
+	return ""
 }
 
 // computeProfileName returns <region>-<workspace-slug>-<environment> per
@@ -377,7 +445,7 @@ func newAuthSwitchCmd() *cobra.Command {
 		Use:     "switch <name>",
 		Short:   "Switch active profile",
 		Example: `  wk auth switch us-acme-prod`,
-		Args:  requireArgs(1, "profile name is required, e.g.: wk auth switch <name>"),
+		Args:    requireArgs(1, "profile name is required, e.g.: wk auth switch <name>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			pm := auth.NewProfileManager()
@@ -521,7 +589,7 @@ func newAuthDeleteCmd() *cobra.Command {
 		Use:     "delete <name>",
 		Short:   "Delete an auth profile and its stored credential",
 		Example: `  wk auth delete us-acme-dev`,
-		Args:  requireArgs(1, "profile name is required, e.g.: wk auth delete <name>"),
+		Args:    requireArgs(1, "profile name is required, e.g.: wk auth delete <name>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			pm := auth.NewProfileManager()
