@@ -15,6 +15,9 @@ type Recipe struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 	Code        any       `json:"code,omitempty"`
 	Config      any       `json:"config,omitempty"`
+	// TriggerApplication identifies the recipe's trigger connector (e.g.
+	// "workato_api_platform"). The MCP tools API keys recipe tools on it.
+	TriggerApplication string `json:"trigger_application,omitempty"`
 }
 
 // RecipeVersion represents a single entry in a recipe's version history
@@ -268,23 +271,23 @@ type MCPTool struct {
 // The API wraps responses in {"data":...}; unwrapping happens in the service layer.
 // IDs are strings (e.g. "mcps-AYcNrsC8-Dd8-AB").
 type MCPManagedServer struct {
-	ID                   string                    `json:"id"`
-	Name                 string                    `json:"name"`
-	Description          string                    `json:"description,omitempty"`
-	AssetType            string                    `json:"asset_type,omitempty"`
-	LogoURL              *string                   `json:"logo_url,omitempty"`
-	MCPURL               string                    `json:"mcp_url,omitempty"`
-	AuthType             string                    `json:"auth_type,omitempty"`
-	AuthenticationMethod string                    `json:"authentication_method,omitempty"`
-	FolderID             int                       `json:"folder_id"`
-	ProjectID            int                       `json:"project_id"`
-	Folders              []MCPServerFolder         `json:"folders,omitempty"`
-	HasVUADependentTools bool                      `json:"has_vua_dependent_tools"`
-	IDPUserGroupIDs      []string                  `json:"idp_user_group_ids,omitempty"`
-	APICollection        *MCPServerCollectionRef   `json:"api_collection,omitempty"`
-	ToolsCount           int                       `json:"tools_count"`
-	CreatedAt            time.Time                 `json:"created_at"`
-	UpdatedAt            time.Time                 `json:"updated_at"`
+	ID                   string                  `json:"id"`
+	Name                 string                  `json:"name"`
+	Description          string                  `json:"description,omitempty"`
+	AssetType            string                  `json:"asset_type,omitempty"`
+	LogoURL              *string                 `json:"logo_url,omitempty"`
+	MCPURL               string                  `json:"mcp_url,omitempty"`
+	AuthType             string                  `json:"auth_type,omitempty"`
+	AuthenticationMethod string                  `json:"authentication_method,omitempty"`
+	FolderID             int                     `json:"folder_id"`
+	ProjectID            int                     `json:"project_id"`
+	Folders              []MCPServerFolder       `json:"folders,omitempty"`
+	HasVUADependentTools bool                    `json:"has_vua_dependent_tools"`
+	IDPUserGroupIDs      []string                `json:"idp_user_group_ids,omitempty"`
+	APICollection        *MCPServerCollectionRef `json:"api_collection,omitempty"`
+	ToolsCount           int                     `json:"tools_count"`
+	CreatedAt            time.Time               `json:"created_at"`
+	UpdatedAt            time.Time               `json:"updated_at"`
 }
 
 // MCPServerFolder is a lightweight folder reference embedded in an MCP server response.
@@ -304,29 +307,40 @@ type MCPServerCollectionRef struct {
 
 // MCPServerTool represents a tool assigned to an MCP managed server.
 type MCPServerTool struct {
-	ID                    int      `json:"id"`
-	Name                  string   `json:"name"`
-	Description           *string  `json:"description,omitempty"`
-	OriginalDescription   *string  `json:"original_description,omitempty"`
-	TriggerApplication    *string  `json:"trigger_application,omitempty"`
-	ActionApplications    []string `json:"action_applications,omitempty"`
-	FlowID                int      `json:"flow_id"`
-	Active                bool     `json:"active"`
-	Enabled               bool     `json:"enabled"`
-	VUARequired           bool     `json:"vua_required"`
+	ID                     int      `json:"id"`
+	Name                   string   `json:"name"`
+	Description            *string  `json:"description,omitempty"`
+	OriginalDescription    *string  `json:"original_description,omitempty"`
+	TriggerApplication     *string  `json:"trigger_application,omitempty"`
+	ActionApplications     []string `json:"action_applications,omitempty"`
+	FlowID                 int      `json:"flow_id"`
+	Active                 bool     `json:"active"`
+	Enabled                bool     `json:"enabled"`
+	VUARequired            bool     `json:"vua_required"`
 	IncompatibilityReasons []string `json:"incompatibility_reasons,omitempty"`
 }
 
 // MCPServerPolicy represents rate/quota limits and IP restrictions for an MCP server.
 type MCPServerPolicy struct {
-	ID          *int              `json:"id"`
-	MCPServerID string            `json:"mcp_server_id"`
-	RateLimits  map[string]int    `json:"rate_limits,omitempty"`
-	QuotaLimits map[string]int    `json:"quota_limits,omitempty"`
-	IPAllowList []string          `json:"ip_allow_list,omitempty"`
-	IPDenyList  []string          `json:"ip_deny_list,omitempty"`
-	CreatedAt   *time.Time        `json:"created_at,omitempty"`
-	UpdatedAt   *time.Time        `json:"updated_at,omitempty"`
+	ID          *int           `json:"id"`
+	MCPServerID *int           `json:"mcp_server_id"`
+	RateLimits  map[string]int `json:"rate_limits,omitempty"`
+	QuotaLimits map[string]int `json:"quota_limits,omitempty"`
+	IPAllowList []string       `json:"ip_allow_list,omitempty"`
+	IPDenyList  []string       `json:"ip_deny_list,omitempty"`
+	CreatedAt   *time.Time     `json:"created_at,omitempty"`
+	UpdatedAt   *time.Time     `json:"updated_at,omitempty"`
+}
+
+// MCPUserGroup is an identity-provider user group from GET /api/mcp/user_groups.
+// IDs are strings (e.g. "group-abc123") and are what assign/remove_user_groups
+// expect in idp_user_group_ids.
+type MCPUserGroup struct {
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	UsersCount int       `json:"users_count"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // MCPServerListOptions configures MCP server list filtering.

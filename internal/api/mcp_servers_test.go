@@ -247,3 +247,117 @@ func TestMCPServerService_ListTools(t *testing.T) {
 		t.Error("Active = false, want true")
 	}
 }
+
+func TestMCPServerService_AssignTools(t *testing.T) {
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/mcp/mcp_servers/mcps-x/assign_tools" {
+			t.Errorf("path = %s, want .../assign_tools", r.URL.Path)
+		}
+		json.NewDecoder(r.Body).Decode(&captured)
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	tools := []map[string]any{{"trigger_application": "workato_api_platform", "id": "277601"}}
+	if err := client.MCPServers().AssignTools(context.Background(), "mcps-x", tools); err != nil {
+		t.Fatalf("AssignTools: %v", err)
+	}
+	got, ok := captured["tools"].([]any)
+	if !ok || len(got) != 1 {
+		t.Fatalf("tools = %v, want 1-element array", captured["tools"])
+	}
+}
+
+func TestMCPServerService_DeleteTool(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "DELETE" {
+			t.Errorf("method = %s, want DELETE", r.Method)
+		}
+		if r.URL.Path != "/mcp/mcp_servers/mcps-x/tools/5" {
+			t.Errorf("path = %s, want .../tools/5", r.URL.Path)
+		}
+		w.WriteHeader(204)
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	if err := client.MCPServers().DeleteTool(context.Background(), "mcps-x", 5); err != nil {
+		t.Fatalf("DeleteTool: %v", err)
+	}
+}
+
+func TestMCPServerService_SetServerPolicies(t *testing.T) {
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "PUT" {
+			t.Errorf("method = %s, want PUT", r.Method)
+		}
+		if r.URL.Path != "/mcp/mcp_servers/mcps-x/server_policies" {
+			t.Errorf("path = %s, want .../server_policies", r.URL.Path)
+		}
+		json.NewDecoder(r.Body).Decode(&captured)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":1,"mcp_server_id":1001,"rate_limits":{"per_minute":30}}`))
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	policy := map[string]any{"rate_limits": map[string]int{"per_minute": 30}}
+	got, err := client.MCPServers().SetServerPolicies(context.Background(), "mcps-x", policy)
+	if err != nil {
+		t.Fatalf("SetServerPolicies: %v", err)
+	}
+	// Policy must be nested under mcp_server_policy in the request.
+	if _, ok := captured["mcp_server_policy"].(map[string]any); !ok {
+		t.Errorf("request body missing mcp_server_policy wrapper; got %v", captured)
+	}
+	if got.RateLimits["per_minute"] != 30 {
+		t.Errorf("rate per_minute = %d, want 30", got.RateLimits["per_minute"])
+	}
+}
+
+func TestMCPServerService_AssignUserGroups(t *testing.T) {
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/mcp/mcp_servers/mcps-x/assign_user_groups" {
+			t.Errorf("path = %s, want .../assign_user_groups", r.URL.Path)
+		}
+		json.NewDecoder(r.Body).Decode(&captured)
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	if err := client.MCPServers().AssignUserGroups(context.Background(), "mcps-x", []string{"group-abc123"}); err != nil {
+		t.Fatalf("AssignUserGroups: %v", err)
+	}
+	ids, ok := captured["idp_user_group_ids"].([]any)
+	if !ok || len(ids) != 1 || ids[0] != "group-abc123" {
+		t.Errorf("idp_user_group_ids = %v, want [group-abc123]", captured["idp_user_group_ids"])
+	}
+}
+
+func TestMCPServerService_ListUserGroups(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/mcp/user_groups" {
+			t.Errorf("path = %s, want /mcp/user_groups", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":[{"id":"group-abc123","name":"Sales","users_count":24}],"count":1}`))
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	groups, err := client.MCPServers().ListUserGroups(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListUserGroups: %v", err)
+	}
+	if len(groups) != 1 || groups[0].ID != "group-abc123" || groups[0].UsersCount != 24 {
+		t.Errorf("groups = %+v, want 1 group group-abc123 with 24 users", groups)
+	}
+}

@@ -63,7 +63,7 @@ type FolderService interface {
 
 // PackageService defines operations on RLCM packages (export/import).
 type PackageService interface {
-	Export(ctx context.Context, folderID int) (int, error)              // returns package ID
+	Export(ctx context.Context, folderID int) (int, error) // returns package ID
 	ExportStatus(ctx context.Context, packageID int) (*Package, error)
 	Download(ctx context.Context, packageID int) ([]byte, error)
 	Import(ctx context.Context, folderID int, data []byte, restartRecipes bool) (int, error) // returns import ID
@@ -119,6 +119,14 @@ type MCPServerService interface {
 	Delete(ctx context.Context, handle string) error
 	TokenRenew(ctx context.Context, handle string) (*MCPManagedServer, error)
 	ListTools(ctx context.Context, handle string, opts *PaginationOptions) ([]MCPServerTool, error)
+	AssignTools(ctx context.Context, handle string, tools []map[string]any) error
+	UpdateTool(ctx context.Context, handle string, toolID int, opts map[string]any) (*MCPServerTool, error)
+	DeleteTool(ctx context.Context, handle string, toolID int) error
+	GetServerPolicies(ctx context.Context, handle string) (*MCPServerPolicy, error)
+	SetServerPolicies(ctx context.Context, handle string, policy map[string]any) (*MCPServerPolicy, error)
+	AssignUserGroups(ctx context.Context, handle string, groupIDs []string) error
+	RemoveUserGroups(ctx context.Context, handle string, groupIDs []string) error
+	ListUserGroups(ctx context.Context, opts *PaginationOptions) ([]MCPUserGroup, error)
 }
 
 // WorkspaceService defines operations on workspace management.
