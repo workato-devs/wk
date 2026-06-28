@@ -12,6 +12,7 @@ type RecipeService interface {
 	Import(ctx context.Context, folderID int, data []byte) (*Recipe, error)
 	Update(ctx context.Context, id int, data []byte) error
 	Delete(ctx context.Context, id int) error
+	Move(ctx context.Context, id, folderID int) error
 	ListJobs(ctx context.Context, recipeID int, opts *JobListOptions) ([]Job, error)
 	GetJob(ctx context.Context, recipeID int, jobID string) (*JobDetail, error)
 	Copy(ctx context.Context, recipeID, folderID int) (*Recipe, error)

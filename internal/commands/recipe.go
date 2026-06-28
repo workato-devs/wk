@@ -1,7 +1,10 @@
 package commands
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -32,6 +35,7 @@ func newRecipesCmd() *cobra.Command {
 	cmd.AddCommand(newRecipesImportCmd())
 	cmd.AddCommand(newRecipesUpdateCmd())
 	cmd.AddCommand(newRecipesDeleteCmd())
+	cmd.AddCommand(newRecipesMoveCmd())
 	cmd.AddCommand(newRecipesJobsCmd())
 	cmd.AddCommand(newRecipesCopyCmd())
 	cmd.AddCommand(newRecipesConnectCmd())
@@ -122,7 +126,7 @@ func newRecipesGetCmd() *cobra.Command {
 		Short: "Get recipe details",
 		Example: `  wk recipes get 12345
   wk recipes get 12345 --json`,
-		Args:  requireArgs(1, "recipe ID is required, e.g.: wk recipes get <id>"),
+		Args: requireArgs(1, "recipe ID is required, e.g.: wk recipes get <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -216,6 +220,7 @@ func newRecipesStartCmd() *cobra.Command {
 					time.Sleep(interval)
 				}
 				if !started {
+					surfaceActivationFailure(cmd, client, id, timeout)
 					return fmt.Errorf("recipe %d did not become active within %s", id, timeout)
 				}
 			}
@@ -269,6 +274,13 @@ func newRecipesPullCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pull <id>",
 		Short: "Pull a single recipe by ID (bypasses package export)",
+		Long: `Pull a single recipe by ID, bypassing the full package export.
+
+The output is the canonical project recipe format (code as an object, with
+version/private/concurrency), so it passes wk lint and can be committed as a
+project recipe file. Because the per-recipe API endpoint does not expose
+"private" or "concurrency", those fall back to the platform defaults
+(false / 1) — use a full "wk pull" when faithful values matter.`,
 		Example: `  wk recipes pull 12345
   wk recipes pull 12345 -o recipe.json`,
 		Args: requireArgs(1, "recipe ID is required, e.g.: wk recipes pull <id>"),
@@ -283,7 +295,11 @@ func newRecipesPullCmd() *cobra.Command {
 				return fmt.Errorf("invalid recipe ID: %s", args[0])
 			}
 
-			data, err := client.Recipes().Export(cmd.Context(), id)
+			raw, err := client.Recipes().Export(cmd.Context(), id)
+			if err != nil {
+				return err
+			}
+			data, err := api.CanonicalizeRecipeExport(raw)
 			if err != nil {
 				return err
 			}
@@ -311,9 +327,16 @@ func newRecipesExportCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "export <id>",
 		Short: "Export a recipe as JSON",
+		Long: `Export a single recipe as canonical project recipe JSON.
+
+The output matches the project recipe format (code as an object, with
+version/private/concurrency) so it passes wk lint. The per-recipe API
+endpoint does not expose "private" or "concurrency", so those fall back to
+the platform defaults (false / 1) — use a full "wk pull" when faithful values
+matter.`,
 		Example: `  wk recipes export 12345
   wk recipes export 12345 -o recipe.json`,
-		Args:  requireArgs(1, "recipe ID is required, e.g.: wk recipes export <id>"),
+		Args: requireArgs(1, "recipe ID is required, e.g.: wk recipes export <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
@@ -325,7 +348,11 @@ func newRecipesExportCmd() *cobra.Command {
 				return fmt.Errorf("invalid recipe ID: %s", args[0])
 			}
 
-			data, err := client.Recipes().Export(cmd.Context(), id)
+			raw, err := client.Recipes().Export(cmd.Context(), id)
+			if err != nil {
+				return err
+			}
+			data, err := api.CanonicalizeRecipeExport(raw)
 			if err != nil {
 				return err
 			}
@@ -355,7 +382,7 @@ func newRecipesImportCmd() *cobra.Command {
 		Short: "Import a recipe from JSON file",
 		Example: `  wk recipes import recipe.json --folder 123
   wk recipes import recipe.json --json`,
-		Args:  requireArgs(1, "file path is required, e.g.: wk recipes import <path>"),
+		Args: requireArgs(1, "file path is required, e.g.: wk recipes import <path>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -591,7 +618,7 @@ func newRecipesCopyCmd() *cobra.Command {
 		Short: "Copy a recipe to a folder",
 		Example: `  wk recipes copy 12345 --to-folder 678
   wk recipes copy 12345 --to-folder 678 --json`,
-		Args:  requireArgs(1, "recipe ID is required, e.g.: wk recipes copy <id>"),
+		Args: requireArgs(1, "recipe ID is required, e.g.: wk recipes copy <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -626,15 +653,54 @@ func newRecipesCopyCmd() *cobra.Command {
 	return cmd
 }
 
+func newRecipesMoveCmd() *cobra.Command {
+	var folderID int
+
+	cmd := &cobra.Command{
+		Use:   "move <id>",
+		Short: "Move a recipe to a different folder",
+		Long: `Move a recipe to a different folder via PUT /recipes/{id}.
+
+Unlike "wk recipes update" — which deliberately ignores folder_id so reused
+export JSON cannot move a recipe by accident — "move" is the explicit opt-in.
+It preserves the recipe ID, job history, and external references (unlike
+copy + delete, which mints a new ID).`,
+		Example: `  wk recipes move 12345 --folder-id 678`,
+		Args:    requireArgs(1, "recipe ID is required, e.g.: wk recipes move <id> --folder-id <id>"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, _, err := resolveAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid recipe ID: %s", args[0])
+			}
+
+			if err := client.Recipes().Move(cmd.Context(), id, folderID); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(os.Stderr, "Recipe %d moved to folder %d\n", id, folderID)
+			return nil
+		},
+	}
+
+	cmd.Flags().IntVar(&folderID, "folder-id", 0, "Target folder ID")
+	_ = cmd.MarkFlagRequired("folder-id")
+	return cmd
+}
+
 func newRecipesConnectCmd() *cobra.Command {
 	var adapter string
 	var connectionID int
 
 	cmd := &cobra.Command{
-		Use:   "update-connection <id>",
-		Short: "Update a recipe's connection",
+		Use:     "update-connection <id>",
+		Short:   "Update a recipe's connection",
 		Example: `  wk recipes update-connection 12345 --adapter salesforce --connection 678`,
-		Args:  requireArgs(1, "recipe ID is required, e.g.: wk recipes update-connection <id>"),
+		Args:    requireArgs(1, "recipe ID is required, e.g.: wk recipes update-connection <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
@@ -675,7 +741,7 @@ func newRecipesUpdateCmd() *cobra.Command {
 file via PUT /api/recipes/:id. The recipe must be stopped — the API rejects
 updates to running recipes. Use "wk recipes stop <id>" first if needed.`,
 		Example: `  wk recipes update 12345 recipe.json`,
-		Args: requireArgs(2, "recipe ID and file path are required, e.g.: wk recipes update <id> <path>"),
+		Args:    requireArgs(2, "recipe ID and file path are required, e.g.: wk recipes update <id> <path>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
@@ -975,8 +1041,8 @@ func newRecipesVersionsCmd() *cobra.Command {
 		Short: "Manage recipe version history",
 		Example: `  wk recipes versions 12345
   wk recipes versions 12345 --json`,
-		Args:  cobra.MinimumNArgs(1),
-		RunE:  runRecipesVersionsList,
+		Args: cobra.MinimumNArgs(1),
+		RunE: runRecipesVersionsList,
 	}
 	cmd.AddCommand(newRecipesVersionsCommentCmd())
 	return cmd
@@ -1028,7 +1094,7 @@ func newRecipesVersionsCommentCmd() *cobra.Command {
 		Use:     "comment <recipe_id> <version_id> <comment>",
 		Short:   "Set or update the comment on a recipe version",
 		Example: `  wk recipes versions comment 12345 42 "Fixed connection timeout"`,
-		Args:  requireArgs(3, "recipe ID, version ID, and comment are required, e.g.: wk recipes versions comment <recipe_id> <version_id> <comment>"),
+		Args:    requireArgs(3, "recipe ID, version ID, and comment are required, e.g.: wk recipes versions comment <recipe_id> <version_id> <comment>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, _, err := resolveAPIClient(cmd)
 			if err != nil {
@@ -1105,4 +1171,93 @@ The recipe-lint plugin must be installed (wk plugins install <path>).`,
 	cmd.Flags().String("skills-path", "", "Path to connector skills directory")
 	cmd.Flags().String("config-path", "", "Path to lint configuration file")
 	return cmd
+}
+
+// errRecipeLintUnavailable signals the recipe-lint plugin is not installed,
+// so callers can degrade to a textual hint instead of failing.
+var errRecipeLintUnavailable = errors.New("recipe-lint plugin not installed")
+
+// surfaceActivationFailure turns an opaque "did not become active" timeout
+// into something actionable (issue #70). A 200 from PUT /recipes/{id}/start
+// acknowledges the request, not successful activation; the recipe may have
+// unresolved step warnings (disconnected connections, invalid datapills) that
+// are otherwise only visible in the Workato editor. As a CLI-only fallback we
+// export the recipe definition and run it through the recipe-lint validator,
+// streaming any findings to stderr. Best-effort: every failure here degrades
+// to a hint, since the caller still returns the underlying timeout error.
+func surfaceActivationFailure(cmd *cobra.Command, client api.Client, id int, timeout time.Duration) {
+	fmt.Fprintf(os.Stderr, "\nRecipe %d accepted the start request but did not reach running state within %s.\n", id, timeout)
+	fmt.Fprintln(os.Stderr, "The start endpoint acknowledges the request, not successful activation — the recipe likely has unresolved step warnings (disconnected connections, invalid datapills, missing fields).")
+
+	raw, err := client.Recipes().Export(cmd.Context(), id)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Open the recipe in the Workato editor to read the step-level warnings blocking activation.")
+		return
+	}
+	canonical, err := api.CanonicalizeRecipeExport(raw)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Open the recipe in the Workato editor to read the step-level warnings blocking activation.")
+		return
+	}
+
+	tmp, err := os.CreateTemp("", fmt.Sprintf("wk-recipe-%d-*.recipe.json", id))
+	if err != nil {
+		return
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(canonical); err != nil {
+		tmp.Close()
+		return
+	}
+	tmp.Close()
+
+	fmt.Fprintln(os.Stderr, "\nValidating the recipe definition (equivalent to wk recipes validate):")
+	result, lintErr := lintRecipeFile(tmp.Name())
+	switch {
+	case errors.Is(lintErr, errRecipeLintUnavailable):
+		fmt.Fprintln(os.Stderr, "  recipe-lint plugin not installed — install it (wk plugins install <path>) and re-run, or open the recipe in the Workato editor to read the step warnings.")
+	case lintErr != nil:
+		fmt.Fprintf(os.Stderr, "  validation could not run: %v\n", lintErr)
+	default:
+		printLintResult(os.Stderr, result)
+	}
+}
+
+// lintRecipeFile runs the recipe-lint plugin's lint.run on path and returns
+// the raw result envelope, or errRecipeLintUnavailable when the plugin is not
+// installed. It invokes the plugin host directly (rather than makePluginRunE)
+// because the calling command does not declare the lint flags.
+func lintRecipeFile(path string) (json.RawMessage, error) {
+	reg, err := plugin.NewRegistry()
+	if err != nil {
+		return nil, errRecipeLintUnavailable
+	}
+	dir, err := reg.GetPluginDir("recipe-lint")
+	if err != nil {
+		return nil, errRecipeLintUnavailable
+	}
+
+	host := plugin.NewPluginHost()
+	defer host.StopAll()
+	if err := host.Load(dir); err != nil {
+		return nil, fmt.Errorf("loading recipe-lint plugin: %w", err)
+	}
+	m, _ := plugin.LoadManifest(filepath.Join(dir, "plugin.toml"))
+	if m == nil {
+		return nil, fmt.Errorf("cannot read recipe-lint manifest")
+	}
+	return host.Execute(m.Name, "lint.run", map[string]any{"files": []string{path}})
+}
+
+// printLintResult renders the lint envelope as indented JSON, falling back to
+// the raw bytes if it does not parse.
+func printLintResult(w io.Writer, result json.RawMessage) {
+	var v any
+	if json.Unmarshal(result, &v) == nil {
+		if b, err := json.MarshalIndent(v, "  ", "  "); err == nil {
+			fmt.Fprintf(w, "  %s\n", b)
+			return
+		}
+	}
+	fmt.Fprintf(w, "  %s\n", string(result))
 }

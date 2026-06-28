@@ -18,9 +18,10 @@ func (s *recipeService) List(ctx context.Context, opts *RecipeListOptions) ([]Re
 		if opts.FolderID != nil {
 			params.Set("folder_id", strconv.Itoa(*opts.FolderID))
 		}
-		if opts.Status == "running" {
+		switch opts.Status {
+		case "running":
 			params.Set("active", "true")
-		} else if opts.Status == "stopped" {
+		case "stopped":
 			params.Set("active", "false")
 		}
 		if opts.Page > 0 {
@@ -97,6 +98,99 @@ func (s *recipeService) Update(ctx context.Context, id int, data []byte) error {
 // on success; s.client.do already treats 2xx as OK.
 func (s *recipeService) Delete(ctx context.Context, id int) error {
 	return s.client.do(ctx, "DELETE", fmt.Sprintf("/recipes/%d", id), nil, nil)
+}
+
+// Move changes a recipe's folder via PUT /recipes/{id} with an explicit
+// folder_id. Update deliberately strips folder_id so reused export JSON
+// cannot move a recipe by accident; Move is the explicit opt-in. It re-sends
+// the recipe's current code/config (fetched via Export) alongside the new
+// folder_id, so the recipe ID, job history, and external references are all
+// preserved — unlike copy+delete, which mints a new ID.
+func (s *recipeService) Move(ctx context.Context, id, folderID int) error {
+	data, err := s.Export(ctx, id)
+	if err != nil {
+		return fmt.Errorf("fetching recipe %d: %w", id, err)
+	}
+	body, err := s.decodeAndResolve(ctx, data)
+	if err != nil {
+		return err
+	}
+	body["folder_id"] = strconv.Itoa(folderID)
+	return s.client.do(ctx, "PUT", fmt.Sprintf("/recipes/%d", id), body, nil)
+}
+
+// CanonicalizeRecipeExport converts the raw GET /recipes/{id} response into
+// the project recipe file format produced by the package-export path
+// (wk pull) and required by wk lint. The single-recipe endpoint differs from
+// the package format in ways that otherwise make its output fail lint:
+//
+//   - "code" is returned as an escaped JSON string; lint requires an object.
+//   - the recipe version is exposed as "version_no"; the project format key
+//     is "version".
+//   - "private" and "concurrency" are not returned by this endpoint at all,
+//     so they fall back to the platform defaults (false / 1). Faithful values
+//     for these two require the package export (wk pull).
+//
+// Runtime-only fields from the GET response (job counts, webhook_url, etc.)
+// are intentionally dropped: a project recipe file is a definition, not a
+// status snapshot, matching what wk pull writes.
+func CanonicalizeRecipeExport(raw []byte) ([]byte, error) {
+	var src map[string]any
+	if err := json.Unmarshal(raw, &src); err != nil {
+		return nil, fmt.Errorf("parsing recipe export: %w", err)
+	}
+
+	out := map[string]any{
+		"name":        src["name"],
+		"description": src["description"],
+		"private":     false,
+		"concurrency": 1,
+	}
+
+	if v, ok := src["config"]; ok {
+		out["config"] = v
+	} else {
+		out["config"] = []any{}
+	}
+
+	// code: parse the escaped JSON string into an object. If it is already an
+	// object (defensive — a future API change), keep it as-is.
+	switch c := src["code"].(type) {
+	case string:
+		var decoded any
+		if err := json.Unmarshal([]byte(c), &decoded); err != nil {
+			return nil, fmt.Errorf("parsing recipe \"code\" string: %w", err)
+		}
+		out["code"] = decoded
+	case nil:
+		// No code field — don't fabricate one; lint will surface it.
+	default:
+		out["code"] = c
+	}
+
+	// version: prefer an explicit "version", else map the endpoint's
+	// "version_no".
+	if v, ok := src["version"]; ok {
+		out["version"] = v
+	} else if v, ok := src["version_no"]; ok {
+		out["version"] = v
+	} else {
+		out["version"] = 0
+	}
+
+	// Honor real values if a future API revision starts returning them.
+	if v, ok := src["private"]; ok {
+		out["private"] = v
+	}
+	if v, ok := src["concurrency"]; ok {
+		out["concurrency"] = v
+	}
+
+	formatted, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(formatted, '\n'), nil
 }
 
 // decodeAndResolve unmarshals recipe JSON, resolves any connection reference
@@ -253,12 +347,20 @@ func (s *recipeService) GetJob(ctx context.Context, recipeID int, jobID string) 
 }
 
 func (s *recipeService) Copy(ctx context.Context, recipeID, folderID int) (*Recipe, error) {
-	body := map[string]any{"folder_id": folderID}
-	var recipe Recipe
-	if err := s.client.do(ctx, "POST", fmt.Sprintf("/recipes/%d/copy", recipeID), body, &recipe); err != nil {
+	// The API rejects a numeric folder_id ("Must be a String"); send it as a
+	// string, matching Import/Move.
+	body := map[string]any{"folder_id": strconv.Itoa(folderID)}
+	// The copy endpoint returns {"success": true, "new_flow_id": N}, not a
+	// recipe object — decode the new id and fetch the full recipe, mirroring
+	// Import.
+	var result struct {
+		Success   bool `json:"success"`
+		NewFlowID int  `json:"new_flow_id"`
+	}
+	if err := s.client.do(ctx, "POST", fmt.Sprintf("/recipes/%d/copy", recipeID), body, &result); err != nil {
 		return nil, err
 	}
-	return &recipe, nil
+	return s.Get(ctx, result.NewFlowID)
 }
 
 // ListVersions returns the version history for a recipe. Pagination matches
@@ -329,4 +431,3 @@ func (s *recipeService) RepeatJobs(ctx context.Context, recipeID int, jobIDs []s
 	}
 	return &result, nil
 }
-

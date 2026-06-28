@@ -81,19 +81,23 @@ func TestRecipeService_GetJob(t *testing.T) {
 
 func TestRecipeService_Copy(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			t.Errorf("method = %s, want POST", r.Method)
-		}
-		if r.URL.Path != "/recipes/42/copy" {
-			t.Errorf("path = %s, want /recipes/42/copy", r.URL.Path)
-		}
-		var body map[string]any
-		json.NewDecoder(r.Body).Decode(&body)
-		if body["folder_id"] != float64(100) {
-			t.Errorf("folder_id = %v, want 100", body["folder_id"])
-		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Recipe{ID: 99, Name: "copy", FolderID: 100})
+		switch {
+		case r.Method == "POST" && r.URL.Path == "/recipes/42/copy":
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			// folder_id must be sent as a string; the API rejects a numeric value.
+			if body["folder_id"] != "100" {
+				t.Errorf("folder_id = %#v, want string \"100\"", body["folder_id"])
+			}
+			// The copy endpoint returns new_flow_id, not a recipe object.
+			w.Write([]byte(`{"success":true,"new_flow_id":99}`))
+		case r.Method == "GET" && r.URL.Path == "/recipes/99":
+			json.NewEncoder(w).Encode(Recipe{ID: 99, Name: "copy", FolderID: 100})
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(404)
+		}
 	}))
 	defer srv.Close()
 
@@ -102,8 +106,13 @@ func TestRecipeService_Copy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	// Copy must return the populated new recipe (regression: it returned a
+	// zero-value Recipe because the 201 body was decoded as a flat recipe).
 	if recipe.ID != 99 {
-		t.Errorf("ID = %d, want 99", recipe.ID)
+		t.Errorf("ID = %d, want 99 (new_flow_id, fetched via Get)", recipe.ID)
+	}
+	if recipe.FolderID != 100 {
+		t.Errorf("FolderID = %d, want 100", recipe.FolderID)
 	}
 }
 
@@ -216,6 +225,94 @@ func TestRecipeService_Update_StringifiesCodeAndConfig(t *testing.T) {
 	}
 	if s, ok := captured["config"].(string); !ok || s != `[{"k":"v"}]` {
 		t.Errorf("config not stringified; got %T %v", captured["config"], captured["config"])
+	}
+}
+
+func TestCanonicalizeRecipeExport(t *testing.T) {
+	// Raw GET /recipes/{id} shape: code is an escaped JSON string, the
+	// version is "version_no", private/concurrency are absent, and runtime
+	// fields (job counts) are present.
+	raw := []byte(`{
+		"id": 271230,
+		"name": "my recipe",
+		"description": "desc",
+		"folder_id": 99,
+		"code": "{\"number\":0,\"provider\":\"clock\"}",
+		"config": [{"keyword":"trigger","provider":"clock","name":"clock"}],
+		"version_no": 7,
+		"job_succeeded_count": 5,
+		"webhook_url": "https://example.com/hook"
+	}`)
+
+	out, err := CanonicalizeRecipeExport(raw)
+	if err != nil {
+		t.Fatalf("CanonicalizeRecipeExport: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("output not valid JSON: %v", err)
+	}
+
+	// code must be an object, not an escaped string (lint CODE_NOT_OBJECT).
+	if _, ok := got["code"].(map[string]any); !ok {
+		t.Errorf("code = %T, want object", got["code"])
+	}
+	// All required top-level keys present (lint MISSING_TOP_LEVEL_KEYS).
+	for _, k := range []string{"version", "private", "concurrency", "name", "config"} {
+		if _, ok := got[k]; !ok {
+			t.Errorf("missing required key %q", k)
+		}
+	}
+	// version_no maps to version.
+	if v, ok := got["version"].(float64); !ok || v != 7 {
+		t.Errorf("version = %v, want 7 (from version_no)", got["version"])
+	}
+	// platform defaults for fields the endpoint omits.
+	if got["private"] != false {
+		t.Errorf("private = %v, want false", got["private"])
+	}
+	if v, ok := got["concurrency"].(float64); !ok || v != 1 {
+		t.Errorf("concurrency = %v, want 1", got["concurrency"])
+	}
+	// runtime-only fields are dropped.
+	if _, ok := got["job_succeeded_count"]; ok {
+		t.Error("job_succeeded_count should be dropped from canonical output")
+	}
+	if _, ok := got["webhook_url"]; ok {
+		t.Error("webhook_url should be dropped from canonical output")
+	}
+}
+
+func TestRecipeService_Move_SendsFolderID(t *testing.T) {
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/recipes/42":
+			// Raw export shape: code/config present, original folder_id.
+			w.Write([]byte(`{"name":"r","folder_id":99,"code":{"x":1},"config":[{"k":"v"}]}`))
+		case r.Method == "PUT" && r.URL.Path == "/recipes/42":
+			json.NewDecoder(r.Body).Decode(&captured)
+			w.Write([]byte(`{"success":true}`))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	if err := client.Recipes().Move(context.Background(), 42, 678); err != nil {
+		t.Fatalf("Move: %v", err)
+	}
+	// Unlike Update, Move must send the new folder_id (as a string, matching
+	// Import's convention).
+	if fid, ok := captured["folder_id"].(string); !ok || fid != "678" {
+		t.Errorf("folder_id = %v (%T), want string 678", captured["folder_id"], captured["folder_id"])
+	}
+	if s, ok := captured["code"].(string); !ok || s != `{"x":1}` {
+		t.Errorf("code not stringified; got %T %v", captured["code"], captured["code"])
 	}
 }
 
@@ -372,10 +469,7 @@ func TestRecipeService_UpdateVersionComment(t *testing.T) {
 
 func TestRecipeService_UpdateVersionComment_TooLong(t *testing.T) {
 	client := NewHTTPClient("http://unused", "test-token")
-	long := ""
-	for i := 0; i < 256; i++ {
-		long += "x"
-	}
+	long := strings.Repeat("x", 256)
 	_, err := client.Recipes().UpdateVersionComment(context.Background(), 42, 99, long)
 	if err == nil || !strings.Contains(err.Error(), "255-character limit") {
 		t.Errorf("err = %v, want 255-character limit", err)
