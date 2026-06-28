@@ -37,7 +37,10 @@ func (s *apiCollectionService) Create(ctx context.Context, name string, projectI
 		"name": name,
 	}
 	if projectID != nil {
-		body["project_id"] = *projectID
+		// The API rejects a numeric project_id ("Must be a String"); send it
+		// as a string, matching the convention used elsewhere (e.g. recipe
+		// import/move folder_id).
+		body["project_id"] = strconv.Itoa(*projectID)
 	}
 	var collection APICollection
 	if err := s.client.do(ctx, "POST", "/api_collections", body, &collection); err != nil {

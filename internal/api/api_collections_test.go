@@ -53,8 +53,9 @@ func TestAPICollectionService_Create(t *testing.T) {
 		if body["name"] != "v2" {
 			t.Errorf("name = %v, want v2", body["name"])
 		}
-		if body["project_id"] != float64(10) {
-			t.Errorf("project_id = %v, want 10", body["project_id"])
+		// project_id must be sent as a string; the API rejects a numeric value.
+		if body["project_id"] != "10" {
+			t.Errorf("project_id = %#v, want string \"10\"", body["project_id"])
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(APICollection{ID: 2, Name: "v2", ProjectID: intPtr(10)})
