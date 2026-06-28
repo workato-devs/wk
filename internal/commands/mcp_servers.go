@@ -855,8 +855,14 @@ func newMCPServersPoliciesGetCmd() *cobra.Command {
 	}
 }
 
+// validQuotaIntervals is the set of quota intervals the API accepts. Rate
+// limits use a minute interval; quota limits are restricted to these longer
+// windows.
+var validQuotaIntervals = []string{"30 days", "60 days", "90 days", "year"}
+
 func newMCPServersPoliciesSetCmd() *cobra.Command {
-	var ratePerMinute, quotaPerDay int
+	var ratePerMinute, quotaLimit int
+	var quotaInterval string
 	var ipAllow, ipDeny []string
 
 	cmd := &cobra.Command{
@@ -864,8 +870,13 @@ func newMCPServersPoliciesSetCmd() *cobra.Command {
 		Short: "Update an MCP server's policy",
 		Long: `Update an MCP server's rate/quota/IP policy.
 
-Only the flags you set are sent; unset fields are left unchanged.`,
-		Example: `  wk mcp servers policies set mcps-AYcNrsC8-Dd8-AB --rate-per-minute 30 --quota-per-day 5000
+Only the flags you set are sent; unset fields are left unchanged.
+
+Rate limits are per-minute. Quota limits require an explicit interval; the API
+accepts only: "30 days", "60 days", "90 days", "year". Pass both --quota-limit
+and --quota-interval together.`,
+		Example: `  wk mcp servers policies set mcps-AYcNrsC8-Dd8-AB --rate-per-minute 30
+  wk mcp servers policies set mcps-AYcNrsC8-Dd8-AB --quota-limit 5000 --quota-interval "30 days"
   wk mcp servers policies set mcps-AYcNrsC8-Dd8-AB --ip-allow 203.0.113.0/24,198.51.100.42`,
 		Args: requireArgs(1, "server handle is required, e.g.: wk mcp servers policies set <handle>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -879,15 +890,32 @@ Only the flags you set are sent; unset fields are left unchanged.`,
 			}
 
 			// The API requires both "limit" and "interval" on each limit
-			// object; the --rate-per-minute / --quota-per-day flags imply the
-			// interval.
+			// object. Rate limits use a minute interval; quota intervals are
+			// restricted to a fixed set, so the caller supplies it explicitly.
 			policy := map[string]any{}
 			if cmd.Flags().Changed("rate-per-minute") {
 				policy["rate_limits"] = map[string]any{"limit": ratePerMinute, "interval": "minute"}
 			}
-			if cmd.Flags().Changed("quota-per-day") {
-				policy["quota_limits"] = map[string]any{"limit": quotaPerDay, "interval": "day"}
+
+			setQuotaLimit := cmd.Flags().Changed("quota-limit")
+			setQuotaInterval := cmd.Flags().Changed("quota-interval")
+			if setQuotaLimit != setQuotaInterval {
+				return fmt.Errorf("--quota-limit and --quota-interval must be set together")
 			}
+			if setQuotaLimit {
+				valid := false
+				for _, v := range validQuotaIntervals {
+					if quotaInterval == v {
+						valid = true
+						break
+					}
+				}
+				if !valid {
+					return fmt.Errorf("invalid --quota-interval %q; valid values: %q", quotaInterval, validQuotaIntervals)
+				}
+				policy["quota_limits"] = map[string]any{"limit": quotaLimit, "interval": quotaInterval}
+			}
+
 			if cmd.Flags().Changed("ip-allow") {
 				policy["ip_allow_list"] = ipAllow
 			}
@@ -895,7 +923,7 @@ Only the flags you set are sent; unset fields are left unchanged.`,
 				policy["ip_deny_list"] = ipDeny
 			}
 			if len(policy) == 0 {
-				return fmt.Errorf("at least one policy flag is required (--rate-per-minute, --quota-per-day, --ip-allow, --ip-deny)")
+				return fmt.Errorf("at least one policy flag is required (--rate-per-minute, --quota-limit/--quota-interval, --ip-allow, --ip-deny)")
 			}
 
 			updated, err := client.MCPServers().SetServerPolicies(cmd.Context(), args[0], policy)
@@ -913,7 +941,8 @@ Only the flags you set are sent; unset fields are left unchanged.`,
 	}
 
 	cmd.Flags().IntVar(&ratePerMinute, "rate-per-minute", 0, "Requests allowed per minute")
-	cmd.Flags().IntVar(&quotaPerDay, "quota-per-day", 0, "Requests allowed per day")
+	cmd.Flags().IntVar(&quotaLimit, "quota-limit", 0, "Quota request limit (requires --quota-interval)")
+	cmd.Flags().StringVar(&quotaInterval, "quota-interval", "", `Quota window: "30 days", "60 days", "90 days", or "year"`)
 	cmd.Flags().StringSliceVar(&ipAllow, "ip-allow", nil, "IP allow list (CIDRs, comma-separated)")
 	cmd.Flags().StringSliceVar(&ipDeny, "ip-deny", nil, "IP deny list (CIDRs, comma-separated)")
 	return cmd
