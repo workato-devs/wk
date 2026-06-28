@@ -18,6 +18,7 @@ func newMCPCmd() *cobra.Command {
 	cmd.AddCommand(newMCPTestCmd())
 	cmd.AddCommand(newMCPToolsCmd())
 	cmd.AddCommand(newMCPServersCmd())
+	cmd.AddCommand(newMCPUserGroupsCmd())
 	return cmd
 }
 
@@ -27,7 +28,7 @@ func newMCPTestCmd() *cobra.Command {
 		Short: "Test MCP server connectivity",
 		Example: `  wk mcp test https://app.workato.com/mcp/abcdef
   wk mcp test https://app.workato.com/mcp/abcdef --json`,
-		Args:  requireArgs(1, "server URL is required, e.g.: wk mcp test <url>"),
+		Args: requireArgs(1, "server URL is required, e.g.: wk mcp test <url>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -62,7 +63,7 @@ func newMCPToolsCmd() *cobra.Command {
 		Short: "List tools exposed by an MCP server",
 		Example: `  wk mcp tools https://app.workato.com/mcp/abcdef
   wk mcp tools https://app.workato.com/mcp/abcdef --json`,
-		Args:  requireArgs(1, "server URL is required, e.g.: wk mcp tools <url>"),
+		Args: requireArgs(1, "server URL is required, e.g.: wk mcp tools <url>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
