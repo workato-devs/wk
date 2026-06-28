@@ -53,8 +53,9 @@ func TestAPICollectionService_Create(t *testing.T) {
 		if body["name"] != "v2" {
 			t.Errorf("name = %v, want v2", body["name"])
 		}
-		if body["project_id"] != float64(10) {
-			t.Errorf("project_id = %v, want 10", body["project_id"])
+		// project_id must be sent as a string; the API rejects a numeric value.
+		if body["project_id"] != "10" {
+			t.Errorf("project_id = %#v, want string \"10\"", body["project_id"])
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(APICollection{ID: 2, Name: "v2", ProjectID: intPtr(10)})
@@ -68,6 +69,25 @@ func TestAPICollectionService_Create(t *testing.T) {
 	}
 	if c.ID != 2 {
 		t.Errorf("ID = %d, want 2", c.ID)
+	}
+}
+
+func TestAPICollectionService_Delete(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "DELETE" {
+			t.Errorf("method = %s, want DELETE", r.Method)
+		}
+		if r.URL.Path != "/api_collections/42" {
+			t.Errorf("path = %s, want /api_collections/42", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{"success": true}})
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	if err := client.APICollections().Delete(context.Background(), 42); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
