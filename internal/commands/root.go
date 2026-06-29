@@ -29,20 +29,6 @@ func (e ExitCodeError) Error() string {
 	return fmt.Sprintf("exit code %d", e.Code)
 }
 
-// Version info set by main via SetVersionInfo.
-var (
-	versionStr = "dev"
-	commitStr  = "none"
-	dateStr    = "unknown"
-)
-
-// SetVersionInfo is called from main.go to inject ldflags values.
-func SetVersionInfo(version, commit, date string) {
-	versionStr = version
-	commitStr = commit
-	dateStr = date
-}
-
 // RunContext carries resolved dependencies into every command handler.
 // No global state — everything a command needs is here.
 type RunContext struct {

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/workato-devs/wk/internal/api"
+	"github.com/workato-devs/wk/internal/version"
 )
 
 // Client is an MCP protocol client using Streamable HTTP transport.
@@ -57,7 +58,7 @@ func (c *Client) Initialize(ctx context.Context) (*api.MCPServerInfo, error) {
 			"capabilities":    map[string]any{},
 			"clientInfo": map[string]any{
 				"name":    "wk",
-				"version": "dev",
+				"version": version.Version(),
 			},
 		},
 		ID: 1,
@@ -125,6 +126,7 @@ func (c *Client) send(ctx context.Context, rpcReq jsonRPCRequest) (*jsonRPCRespo
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream, application/json")
+	req.Header.Set("User-Agent", version.UserAgent())
 	if c.sessionID != "" {
 		req.Header.Set("Mcp-Session-Id", c.sessionID)
 	}
