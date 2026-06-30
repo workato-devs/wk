@@ -8,9 +8,11 @@ import (
 	"strings"
 )
 
-// These are populated once at startup by Set, sourced from the values
-// goreleaser injects into main via ldflags. They default to dev values so
-// `go run`/`go test` builds still produce a sensible User-Agent.
+// These are populated once at startup by Set. The real values originate from
+// the Go linker's -X flags, which are declared in the Makefile and
+// .goreleaser.yaml, applied to main.version/commit/date, then handed here via
+// Set. They default to dev values so `go run`/`go test` builds (no -X flags)
+// still produce a sensible User-Agent.
 var (
 	version = "dev"
 	commit  = "none"
