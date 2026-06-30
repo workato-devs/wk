@@ -19,7 +19,7 @@ func TestSetPopulatesAccessors(t *testing.T) {
 func TestUserAgentFormat(t *testing.T) {
 	Set("1.2.3", "c", "d")
 
-	if got, want := UserAgent(), "workato-cli/1.2.3"; got != want {
+	if got, want := UserAgent(), "wk-cli/1.2.3"; got != want {
 		t.Errorf("UserAgent() = %q, want %q", got, want)
 	}
 }
@@ -32,7 +32,7 @@ func TestSetStripsLeadingV(t *testing.T) {
 	if got, want := Version(), "1.0.6-beta"; got != want {
 		t.Errorf("Version() = %q, want %q (leading v should be stripped)", got, want)
 	}
-	if got, want := UserAgent(), "workato-cli/1.0.6-beta"; got != want {
+	if got, want := UserAgent(), "wk-cli/1.0.6-beta"; got != want {
 		t.Errorf("UserAgent() = %q, want %q", got, want)
 	}
 }
@@ -41,7 +41,7 @@ func TestSetStripsLeadingV(t *testing.T) {
 func TestSetDevFallbackUnchanged(t *testing.T) {
 	Set("dev", "none", "unknown")
 
-	if got, want := UserAgent(), "workato-cli/dev"; got != want {
+	if got, want := UserAgent(), "wk-cli/dev"; got != want {
 		t.Errorf("UserAgent() = %q, want %q", got, want)
 	}
 }

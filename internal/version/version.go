@@ -40,15 +40,16 @@ func Commit() string { return commit }
 // Date returns the build date.
 func Date() string { return date }
 
-// UserAgent returns the HTTP User-Agent header value, e.g. "workato-cli/1.2.3".
+// UserAgent returns the HTTP User-Agent header value, e.g. "wk-cli/1.2.3".
 // The backend telemetry pipeline attributes requests to the CLI and its
 // version via this header, mirroring the old workato-platform-cli's
 // "workato-platform-cli/<version>" convention.
 //
-// The "workato-cli" token is deliberately distinctive. The nginx access-log
-// field this lands in is analyzed/tokenized, so a short token like "wk"
-// collides with unrelated traffic (it appears as a stray token in other
-// user-agents), whereas "workato-cli" matches cleanly as a phrase.
+// The token is "wk-cli", not the bare command name "wk": the nginx access-log
+// field this lands in is analyzed/tokenized, so a 2-char token like "wk"
+// shows up as a stray token in unrelated user-agents and collides. "wk-cli"
+// filters cleanly as a phrase ("wk" then "cli" adjacent), and it matches the
+// token the original beta builds already sent, keeping telemetry continuous.
 func UserAgent() string {
-	return fmt.Sprintf("workato-cli/%s", version)
+	return fmt.Sprintf("wk-cli/%s", version)
 }
