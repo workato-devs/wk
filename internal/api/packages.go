@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/workato-devs/wk/internal/version"
 )
 
 type packageService struct {
@@ -63,7 +65,7 @@ func (s *packageService) Import(ctx context.Context, folderID int, data []byte, 
 	}
 
 	req.Header.Set("Authorization", "Bearer "+s.client.token)
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", version.UserAgent())
 	req.Header.Set("Content-Type", "application/octet-stream")
 
 	if s.client.verbose {

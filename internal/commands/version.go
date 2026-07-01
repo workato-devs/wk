@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/workato-devs/wk/internal/version"
 )
 
 func newVersionCmd() *cobra.Command {
@@ -20,16 +22,16 @@ func newVersionCmd() *cobra.Command {
 			}
 
 			info := map[string]string{
-				"version": versionStr,
-				"commit":  commitStr,
-				"date":    dateStr,
+				"version": version.Version(),
+				"commit":  version.Commit(),
+				"date":    version.Date(),
 			}
 
 			if flagJSON {
 				return rctx.Formatter.Format(cmd.OutOrStdout(), info)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "wk %s\n", versionStr)
+			fmt.Fprintf(cmd.OutOrStdout(), "wk %s\n", version.Version())
 			return nil
 		},
 	}
