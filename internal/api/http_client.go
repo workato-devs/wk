@@ -9,10 +9,9 @@ import (
 	"net/http"
 	"os"
 	"time"
-)
 
-// userAgent is sent on every outbound Workato API request.
-const userAgent = "wk/dev"
+	"github.com/workato-devs/wk/internal/version"
+)
 
 // HTTPClient implements the Client interface using HTTP.
 type HTTPClient struct {
@@ -175,7 +174,7 @@ func (c *HTTPClient) do(ctx context.Context, method, path string, body, result a
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", version.UserAgent())
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -237,7 +236,7 @@ func (c *HTTPClient) doRaw(ctx context.Context, method, path string) ([]byte, er
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", version.UserAgent())
 
 	if c.verbose {
 		fmt.Fprintf(os.Stderr, "[debug] %s %s%s\n", method, c.baseURL, path)
