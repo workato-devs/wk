@@ -616,3 +616,66 @@ func TestRecipeService_Start_ExtraTupleElements_StillParsed(t *testing.T) {
 		t.Errorf("message = %q, want \"can't be blank\"", d.Message)
 	}
 }
+
+// Fixture bodies recorded live 2026-07-02 (trial workspace): the platform
+// refuses delete/update of a running recipe with HTTP 200 + success:false.
+
+func TestRecipeService_Delete_RunningRecipe_ReturnsRefusal(t *testing.T) {
+	body := `{"success":false,"errors":{"running":["Can't change the recipe state: invalid state running"]}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	err := client.Recipes().Delete(context.Background(), 42)
+	var ref *MutationRefusedError
+	if !errors.As(err, &ref) {
+		t.Fatalf("error type = %T, want *MutationRefusedError", err)
+	}
+	if !strings.Contains(ref.Error(), "invalid state running") {
+		t.Errorf("Error() = %q, want platform reason included", ref.Error())
+	}
+}
+
+func TestRecipeService_Delete_Success_ReturnsNil(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"success":true}`))
+	}))
+	defer srv.Close()
+	client := NewHTTPClient(srv.URL, "test-token")
+	if err := client.Recipes().Delete(context.Background(), 42); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRecipeService_Update_RunningRecipe_ReturnsRefusal(t *testing.T) {
+	body := `{"success":false,"errors":{"running":["can't modify running recipe"]}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	err := client.Recipes().Update(context.Background(), 42, []byte(`{"name":"x","code":{},"config":[]}`))
+	var ref *MutationRefusedError
+	if !errors.As(err, &ref) {
+		t.Fatalf("error type = %T, want *MutationRefusedError", err)
+	}
+	if !strings.Contains(ref.Error(), "can't modify running recipe") {
+		t.Errorf("Error() = %q, want platform reason included", ref.Error())
+	}
+}
+
+func TestRecipeService_Delete_UnparseableBody_DegradesToNil(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(``))
+	}))
+	defer srv.Close()
+	client := NewHTTPClient(srv.URL, "test-token")
+	if err := client.Recipes().Delete(context.Background(), 42); err != nil {
+		t.Fatalf("empty body should degrade to nil, got: %v", err)
+	}
+}

@@ -103,3 +103,10 @@ func TestClassifyError_JoinedActivationErrors_IsValidation(t *testing.T) {
 		t.Errorf("classifyError(joined ActivationErrors) = %d, want %d (ExitValidation)", got, wkerrors.ExitValidation)
 	}
 }
+
+func TestClassifyError_MutationRefused_IsValidation(t *testing.T) {
+	err := fmt.Errorf("wrapped: %w", &api.MutationRefusedError{Op: "deleting recipe 42", Reasons: []string{"invalid state running"}})
+	if got := classifyError(err); got != wkerrors.ExitValidation {
+		t.Errorf("classifyError(MutationRefusedError) = %d, want %d (ExitValidation)", got, wkerrors.ExitValidation)
+	}
+}

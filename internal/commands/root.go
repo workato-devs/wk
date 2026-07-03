@@ -180,6 +180,10 @@ func classifyError(err error) int {
 		if errors.As(err, &actErr) {
 			return wkerrors.ExitValidation
 		}
+		var refErr *api.MutationRefusedError
+		if errors.As(err, &refErr) {
+			return wkerrors.ExitValidation
+		}
 		return wkerrors.ExitGeneral
 	}
 }

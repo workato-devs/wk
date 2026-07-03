@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -52,7 +53,7 @@ func (s *recipeService) Get(ctx context.Context, id int) (*Recipe, error) {
 }
 
 func (s *recipeService) Start(ctx context.Context, id int) error {
-	body, err := s.client.doRaw(ctx, "PUT", fmt.Sprintf("/recipes/%d/start", id))
+	body, err := s.client.doRaw(ctx, "PUT", fmt.Sprintf("/recipes/%d/start", id), nil)
 	if err != nil {
 		return err
 	}
@@ -64,7 +65,7 @@ func (s *recipeService) Stop(ctx context.Context, id int) error {
 }
 
 func (s *recipeService) Export(ctx context.Context, id int) ([]byte, error) {
-	return s.client.doRaw(ctx, "GET", fmt.Sprintf("/recipes/%d", id))
+	return s.client.doRaw(ctx, "GET", fmt.Sprintf("/recipes/%d", id), nil)
 }
 
 func (s *recipeService) Import(ctx context.Context, folderID int, data []byte) (*Recipe, error) {
@@ -96,13 +97,22 @@ func (s *recipeService) Update(ctx context.Context, id int, data []byte) error {
 	// folder_id is meaningful only on create; drop it so callers can reuse
 	// their export JSON without accidentally moving the recipe.
 	delete(body, "folder_id")
-	return s.client.do(ctx, "PUT", fmt.Sprintf("/recipes/%d", id), body, nil)
+	resp, err := s.client.doRaw(ctx, "PUT", fmt.Sprintf("/recipes/%d", id), body)
+	if err != nil {
+		return err
+	}
+	return parseMutationRefusal(fmt.Sprintf("updating recipe %d", id), resp)
 }
 
-// Delete removes a recipe via DELETE /recipes/{id}. The API returns 204
-// on success; s.client.do already treats 2xx as OK.
+// Delete removes a recipe via DELETE /recipes/{id}. The endpoint returns
+// HTTP 200 for both outcomes; a refusal (e.g. the recipe is running)
+// carries success:false in the body.
 func (s *recipeService) Delete(ctx context.Context, id int) error {
-	return s.client.do(ctx, "DELETE", fmt.Sprintf("/recipes/%d", id), nil, nil)
+	resp, err := s.client.doRaw(ctx, "DELETE", fmt.Sprintf("/recipes/%d", id), nil)
+	if err != nil {
+		return err
+	}
+	return parseMutationRefusal(fmt.Sprintf("deleting recipe %d", id), resp)
 }
 
 // Move changes a recipe's folder via PUT /recipes/{id} with an explicit
@@ -121,7 +131,11 @@ func (s *recipeService) Move(ctx context.Context, id, folderID int) error {
 		return err
 	}
 	body["folder_id"] = strconv.Itoa(folderID)
-	return s.client.do(ctx, "PUT", fmt.Sprintf("/recipes/%d", id), body, nil)
+	resp, err := s.client.doRaw(ctx, "PUT", fmt.Sprintf("/recipes/%d", id), body)
+	if err != nil {
+		return err
+	}
+	return parseMutationRefusal(fmt.Sprintf("moving recipe %d", id), resp)
 }
 
 // CanonicalizeRecipeExport converts the raw GET /recipes/{id} response into
@@ -536,4 +550,40 @@ func parseActivationError(recipeID int, body []byte) error {
 		actErr.CodeErrors = resp.CodeErrors
 	}
 	return actErr
+}
+
+// MutationRefusedError reports a 2xx mutation response whose body carries
+// success:false — the platform acknowledged the request but refused to apply
+// it (e.g. deleting or updating a recipe that is currently running). Several
+// recipe lifecycle endpoints use this shape instead of a 4xx status.
+type MutationRefusedError struct {
+	Op      string
+	Reasons []string
+}
+
+func (e *MutationRefusedError) Error() string {
+	if len(e.Reasons) == 0 {
+		return e.Op + ": refused by the platform (success:false)"
+	}
+	return e.Op + ": " + strings.Join(e.Reasons, "; ")
+}
+
+// parseMutationRefusal inspects a 2xx mutation response body for the
+// {"success":false,"errors":{field:[messages]}} refusal shape. Best-effort,
+// mirroring parseActivationError: anything that doesn't decode as
+// success:false keeps the previous ignore-the-body behavior.
+func parseMutationRefusal(op string, body []byte) error {
+	var probe struct {
+		Success *bool               `json:"success"`
+		Errors  map[string][]string `json:"errors"`
+	}
+	if err := json.Unmarshal(body, &probe); err != nil || probe.Success == nil || *probe.Success {
+		return nil
+	}
+	e := &MutationRefusedError{Op: op}
+	for _, msgs := range probe.Errors {
+		e.Reasons = append(e.Reasons, msgs...)
+	}
+	sort.Strings(e.Reasons)
+	return e
 }

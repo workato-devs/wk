@@ -892,6 +892,11 @@ does no API call at all and is safe when the recipe is already gone.`,
 					return err
 				}
 				if err := client.Recipes().Delete(cmd.Context(), id); err != nil {
+					var refErr *api.MutationRefusedError
+					if errors.As(err, &refErr) {
+						// Already carries the operation and recipe ID.
+						return err
+					}
 					return fmt.Errorf("deleting recipe %d: %w", id, err)
 				}
 			}
