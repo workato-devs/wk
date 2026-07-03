@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 type recipeService struct {
@@ -51,7 +52,11 @@ func (s *recipeService) Get(ctx context.Context, id int) (*Recipe, error) {
 }
 
 func (s *recipeService) Start(ctx context.Context, id int) error {
-	return s.client.do(ctx, "PUT", fmt.Sprintf("/recipes/%d/start", id), nil, nil)
+	body, err := s.client.doRaw(ctx, "PUT", fmt.Sprintf("/recipes/%d/start", id))
+	if err != nil {
+		return err
+	}
+	return parseActivationError(id, body)
 }
 
 func (s *recipeService) Stop(ctx context.Context, id int) error {
@@ -430,4 +435,105 @@ func (s *recipeService) RepeatJobs(ctx context.Context, recipeID int, jobIDs []s
 		return nil, err
 	}
 	return &result, nil
+}
+
+// ActivationError reports why the platform refused to activate a recipe.
+// PUT /recipes/{id}/start returns HTTP 200 with success:false and a
+// code_errors payload when activation is blocked; see the fixtures in
+// recipes_test.go for recorded shapes.
+type ActivationError struct {
+	RecipeID   int
+	CodeErrors []StepCodeErrors
+}
+
+// StepCodeErrors groups activation errors for one recipe step (by step number).
+type StepCodeErrors struct {
+	Step    int
+	Details []FieldCodeError
+}
+
+// FieldCodeError is one field-level activation error within a step.
+type FieldCodeError struct {
+	Label   string
+	Value   any
+	Message string
+	Path    string
+}
+
+func (e *ActivationError) Error() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "recipe %d cannot activate: the platform reported step errors", e.RecipeID)
+	for _, step := range e.CodeErrors {
+		for _, d := range step.Details {
+			fmt.Fprintf(&b, "\n  step %d: %s %s (%s)", step.Step, d.Label, d.Message, d.Path)
+		}
+	}
+	return b.String()
+}
+
+// startResponse is the (undocumented) body of PUT /recipes/{id}/start. The
+// endpoint returns HTTP 200 for both outcomes; success:false carries the
+// activation errors that the recipe editor shows as inline step annotations.
+type startResponse struct {
+	Success    bool             `json:"success"`
+	CodeErrors []StepCodeErrors `json:"code_errors"`
+}
+
+// UnmarshalJSON decodes the positional pair [step_number, [field errors]].
+func (s *StepCodeErrors) UnmarshalJSON(data []byte) error {
+	var raw []json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if len(raw) != 2 {
+		return fmt.Errorf("code_errors entry: want [step, details], got %d elements", len(raw))
+	}
+	if err := json.Unmarshal(raw[0], &s.Step); err != nil {
+		return fmt.Errorf("code_errors step number: %w", err)
+	}
+	return json.Unmarshal(raw[1], &s.Details)
+}
+
+// UnmarshalJSON decodes the positional tuple [label, current_value, message, path].
+func (f *FieldCodeError) UnmarshalJSON(data []byte) error {
+	var raw []json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if len(raw) < 4 {
+		return fmt.Errorf("code_errors detail: want at least 4 elements, got %d", len(raw))
+	}
+	if err := json.Unmarshal(raw[0], &f.Label); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(raw[1], &f.Value); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(raw[2], &f.Message); err != nil {
+		return err
+	}
+	return json.Unmarshal(raw[3], &f.Path)
+}
+
+// parseActivationError inspects a start response body and returns an
+// *ActivationError when the platform refused activation. The body shape is
+// undocumented, so parsing is strictly best-effort: anything that doesn't
+// decode as success:false keeps the previous behavior (nil — callers fall
+// through to polling and the existing timeout diagnostics).
+func parseActivationError(recipeID int, body []byte) error {
+	// Two-pass parse: "success" alone decides blocked-or-not; the error
+	// details are decoded separately so a drifted code_errors shape can
+	// never suppress a definite refusal.
+	var probe struct {
+		Success *bool `json:"success"`
+	}
+	if err := json.Unmarshal(body, &probe); err != nil || probe.Success == nil || *probe.Success {
+		return nil
+	}
+	actErr := &ActivationError{RecipeID: recipeID}
+	var resp startResponse
+	if err := json.Unmarshal(body, &resp); err == nil {
+		actErr.CodeErrors = resp.CodeErrors
+	}
+	return actErr
 }

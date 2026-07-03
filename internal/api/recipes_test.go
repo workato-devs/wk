@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -473,5 +474,145 @@ func TestRecipeService_UpdateVersionComment_TooLong(t *testing.T) {
 	_, err := client.Recipes().UpdateVersionComment(context.Background(), 42, 99, long)
 	if err == nil || !strings.Contains(err.Error(), "255-character limit") {
 		t.Errorf("err = %v, want 255-character limit", err)
+	}
+}
+
+// Fixture bodies below are verbatim responses recorded from PUT /recipes/{id}/start
+// against a trial workspace on 2026-07-02 (HTTP 200 in all cases).
+
+func TestRecipeService_Start_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "PUT" {
+			t.Errorf("method = %s, want PUT", r.Method)
+		}
+		if r.URL.Path != "/recipes/42/start" {
+			t.Errorf("path = %s, want /recipes/42/start", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"success":true}`))
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	if err := client.Recipes().Start(context.Background(), 42); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRecipeService_Start_ActivationBlocked_ReturnsCodeErrors(t *testing.T) {
+	// Recipe with return_response blocks that fail to populate required schema fields.
+	body := `{"success":false,"code_errors":[[4,[["Response body/Error",null,"can't be blank","response.error"]]],[6,[["Response body/Message",null,"can't be blank","response.message"],["Response body/Course code",null,"can't be blank","response.course_code"]]],[9,[["Response body/Message",null,"can't be blank","response.message"],["Response body/Course code",null,"can't be blank","response.course_code"]]]],"config_errors":[]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	err := client.Recipes().Start(context.Background(), 42)
+	if err == nil {
+		t.Fatal("expected error for success:false response, got nil")
+	}
+	var actErr *ActivationError
+	if !errors.As(err, &actErr) {
+		t.Fatalf("error type = %T, want *ActivationError", err)
+	}
+	if len(actErr.CodeErrors) != 3 {
+		t.Fatalf("code error steps = %d, want 3", len(actErr.CodeErrors))
+	}
+	if actErr.CodeErrors[0].Step != 4 {
+		t.Errorf("first step = %d, want 4", actErr.CodeErrors[0].Step)
+	}
+	d := actErr.CodeErrors[0].Details[0]
+	if d.Label != "Response body/Error" || d.Message != "can't be blank" || d.Path != "response.error" {
+		t.Errorf("detail = %+v, want label/message/path from fixture", d)
+	}
+	if len(actErr.CodeErrors[1].Details) != 2 {
+		t.Errorf("step 6 details = %d, want 2", len(actErr.CodeErrors[1].Details))
+	}
+}
+
+func TestRecipeService_Start_ActivationBlocked_CurrentValuePresent(t *testing.T) {
+	// Invalid if-condition operand: the second tuple element carries the current value.
+	body := `{"success":false,"code_errors":[[3,[["conditions/1/operand","equals","is invalid","conditions.0.operand"]]]],"config_errors":[]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	err := client.Recipes().Start(context.Background(), 42)
+	var actErr *ActivationError
+	if !errors.As(err, &actErr) {
+		t.Fatalf("error type = %T, want *ActivationError", err)
+	}
+	d := actErr.CodeErrors[0].Details[0]
+	if d.Value != "equals" {
+		t.Errorf("value = %v, want \"equals\"", d.Value)
+	}
+	if actErr.Error() == "" {
+		t.Error("Error() should render a non-empty message")
+	}
+	if !strings.Contains(actErr.Error(), "is invalid") {
+		t.Errorf("Error() = %q, want it to contain the platform message", actErr.Error())
+	}
+}
+
+func TestRecipeService_Start_UnparseableBody_DegradesToNil(t *testing.T) {
+	// Defensive: an unexpected body shape must not break the current contract.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`ok`))
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	if err := client.Recipes().Start(context.Background(), 42); err != nil {
+		t.Fatalf("unparseable body should degrade to nil error, got: %v", err)
+	}
+}
+
+func TestRecipeService_Start_MalformedCodeErrors_StillReportsBlocked(t *testing.T) {
+	// success:false is a definite refusal even if the code_errors shape drifts;
+	// the error must not be swallowed just because details fail to parse.
+	body := `{"success":false,"code_errors":[{"unexpected":"shape"}],"config_errors":[]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	err := client.Recipes().Start(context.Background(), 42)
+	var actErr *ActivationError
+	if !errors.As(err, &actErr) {
+		t.Fatalf("error type = %T, want *ActivationError even with unparseable details", err)
+	}
+	if len(actErr.CodeErrors) != 0 {
+		t.Errorf("code errors = %d, want 0 (details unparseable)", len(actErr.CodeErrors))
+	}
+}
+
+func TestRecipeService_Start_ExtraTupleElements_StillParsed(t *testing.T) {
+	// Forward compat: a future platform version appending tuple elements must
+	// not wipe the details we can decode.
+	body := `{"success":false,"code_errors":[[4,[["Response body/Error",null,"can't be blank","response.error","future-severity"]]]],"config_errors":[]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	err := client.Recipes().Start(context.Background(), 42)
+	var actErr *ActivationError
+	if !errors.As(err, &actErr) {
+		t.Fatalf("error type = %T, want *ActivationError", err)
+	}
+	if len(actErr.CodeErrors) != 1 || len(actErr.CodeErrors[0].Details) != 1 {
+		t.Fatalf("details lost on 5-element tuple: %+v", actErr.CodeErrors)
+	}
+	if d := actErr.CodeErrors[0].Details[0]; d.Message != "can't be blank" {
+		t.Errorf("message = %q, want \"can't be blank\"", d.Message)
 	}
 }

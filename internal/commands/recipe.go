@@ -188,8 +188,20 @@ func newRecipesStartCmd() *cobra.Command {
 				return err
 			}
 
+			var blocked []error
 			for _, id := range ids {
 				if err := client.Recipes().Start(cmd.Context(), id); err != nil {
+					var actErr *api.ActivationError
+					if errors.As(err, &actErr) {
+						// The platform refused activation and told us why —
+						// no point polling. In bulk mode one blocked recipe
+						// shouldn't abandon the rest of the batch.
+						if noWait || len(ids) > 1 {
+							blocked = append(blocked, actErr)
+							continue
+						}
+						return actErr
+					}
 					return fmt.Errorf("starting recipe %d: %w", id, err)
 				}
 
@@ -223,6 +235,9 @@ func newRecipesStartCmd() *cobra.Command {
 					surfaceActivationFailure(cmd, client, id, timeout)
 					return fmt.Errorf("recipe %d did not become active within %s", id, timeout)
 				}
+			}
+			if len(blocked) > 0 {
+				return errors.Join(blocked...)
 			}
 			return nil
 		},
