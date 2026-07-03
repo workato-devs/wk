@@ -679,3 +679,60 @@ func TestRecipeService_Delete_UnparseableBody_DegradesToNil(t *testing.T) {
 		t.Fatalf("empty body should degrade to nil, got: %v", err)
 	}
 }
+
+func TestRecipeService_Start_ThreeElementTuple_StillParsed(t *testing.T) {
+	// Recorded live 2026-07-03: an invalid action name yields a THREE-element
+	// tuple (label, value, message — no path). config_errors' fourth element
+	// is an i18n-key object, so the tuple tail is not reliably a string either.
+	body := `{"success":false,"code_errors":[[1,[["name","search_records","is invalid"]]]],"config_errors":[[1,[["account_id",32148,"unconnected",{"key":"packages.recipe_source_code.flow_validations.errors.config_unconnected"}]]]]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	err := client.Recipes().Start(context.Background(), 42)
+	var actErr *ActivationError
+	if !errors.As(err, &actErr) {
+		t.Fatalf("error type = %T, want *ActivationError", err)
+	}
+	if len(actErr.CodeErrors) != 1 || len(actErr.CodeErrors[0].Details) != 1 {
+		t.Fatalf("3-element tuple lost: %+v", actErr.CodeErrors)
+	}
+	d := actErr.CodeErrors[0].Details[0]
+	if d.Label != "name" || d.Message != "is invalid" || d.Path != "" {
+		t.Errorf("detail = %+v, want label=name message=\"is invalid\" path empty", d)
+	}
+	if len(actErr.ConfigErrors) != 1 || len(actErr.ConfigErrors[0].Details) != 1 {
+		t.Fatalf("config_errors lost: %+v", actErr.ConfigErrors)
+	}
+	c := actErr.ConfigErrors[0].Details[0]
+	if c.Label != "account_id" || c.Message != "unconnected" {
+		t.Errorf("config detail = %+v, want account_id/unconnected", c)
+	}
+	if !strings.Contains(actErr.Error(), "unconnected") {
+		t.Errorf("Error() = %q, want config error rendered", actErr.Error())
+	}
+}
+
+func TestRecipeService_Start_ExtraStepTupleElements_StillParsed(t *testing.T) {
+	// Same forward-compat posture as the field tuples: an extra element on the
+	// outer [step, details] pair must not wipe the details.
+	body := `{"success":false,"code_errors":[[4,[["Response body/Error",null,"can't be blank","response.error"]],"future-extra"]],"config_errors":[]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	err := client.Recipes().Start(context.Background(), 42)
+	var actErr *ActivationError
+	if !errors.As(err, &actErr) {
+		t.Fatalf("error type = %T, want *ActivationError", err)
+	}
+	if len(actErr.CodeErrors) != 1 || len(actErr.CodeErrors[0].Details) != 1 {
+		t.Fatalf("details lost on 3-element step tuple: %+v", actErr.CodeErrors)
+	}
+}

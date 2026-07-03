@@ -456,8 +456,9 @@ func (s *recipeService) RepeatJobs(ctx context.Context, recipeID int, jobIDs []s
 // code_errors payload when activation is blocked; see the fixtures in
 // recipes_test.go for recorded shapes.
 type ActivationError struct {
-	RecipeID   int
-	CodeErrors []StepCodeErrors
+	RecipeID     int
+	CodeErrors   []StepCodeErrors
+	ConfigErrors []StepCodeErrors
 }
 
 // StepCodeErrors groups activation errors for one recipe step (by step number).
@@ -477,9 +478,12 @@ type FieldCodeError struct {
 func (e *ActivationError) Error() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "recipe %d cannot activate: the platform reported step errors", e.RecipeID)
-	for _, step := range e.CodeErrors {
+	for _, step := range append(append([]StepCodeErrors{}, e.CodeErrors...), e.ConfigErrors...) {
 		for _, d := range step.Details {
-			fmt.Fprintf(&b, "\n  step %d: %s %s (%s)", step.Step, d.Label, d.Message, d.Path)
+			fmt.Fprintf(&b, "\n  step %d: %s %s", step.Step, d.Label, d.Message)
+			if d.Path != "" {
+				fmt.Fprintf(&b, " (%s)", d.Path)
+			}
 		}
 	}
 	return b.String()
@@ -489,8 +493,9 @@ func (e *ActivationError) Error() string {
 // endpoint returns HTTP 200 for both outcomes; success:false carries the
 // activation errors that the recipe editor shows as inline step annotations.
 type startResponse struct {
-	Success    bool             `json:"success"`
-	CodeErrors []StepCodeErrors `json:"code_errors"`
+	Success      bool             `json:"success"`
+	CodeErrors   []StepCodeErrors `json:"code_errors"`
+	ConfigErrors []StepCodeErrors `json:"config_errors"`
 }
 
 // UnmarshalJSON decodes the positional pair [step_number, [field errors]].
@@ -499,7 +504,7 @@ func (s *StepCodeErrors) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	if len(raw) != 2 {
+	if len(raw) < 2 {
 		return fmt.Errorf("code_errors entry: want [step, details], got %d elements", len(raw))
 	}
 	if err := json.Unmarshal(raw[0], &s.Step); err != nil {
@@ -508,14 +513,18 @@ func (s *StepCodeErrors) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(raw[1], &s.Details)
 }
 
-// UnmarshalJSON decodes the positional tuple [label, current_value, message, path].
+// UnmarshalJSON decodes the positional tuple [label, current_value, message]
+// with an optional fourth path element. Observed live shapes: schema errors
+// carry four elements ([label, value, message, path]); invalid-name errors
+// carry three; config_errors reuse the layout with a non-string fourth
+// element, so the tail is decoded best-effort.
 func (f *FieldCodeError) UnmarshalJSON(data []byte) error {
 	var raw []json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	if len(raw) < 4 {
-		return fmt.Errorf("code_errors detail: want at least 4 elements, got %d", len(raw))
+	if len(raw) < 3 {
+		return fmt.Errorf("code_errors detail: want at least 3 elements, got %d", len(raw))
 	}
 	if err := json.Unmarshal(raw[0], &f.Label); err != nil {
 		return err
@@ -526,7 +535,12 @@ func (f *FieldCodeError) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(raw[2], &f.Message); err != nil {
 		return err
 	}
-	return json.Unmarshal(raw[3], &f.Path)
+	if len(raw) > 3 {
+		// Path is absent on some shapes and non-string on others; never let
+		// the tail kill the details we already have.
+		_ = json.Unmarshal(raw[3], &f.Path)
+	}
+	return nil
 }
 
 // parseActivationError inspects a start response body and returns an
@@ -548,6 +562,7 @@ func parseActivationError(recipeID int, body []byte) error {
 	var resp startResponse
 	if err := json.Unmarshal(body, &resp); err == nil {
 		actErr.CodeErrors = resp.CodeErrors
+		actErr.ConfigErrors = resp.ConfigErrors
 	}
 	return actErr
 }
