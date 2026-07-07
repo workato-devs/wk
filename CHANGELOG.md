@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- All API and MCP HTTP requests now send a `wk-cli/<version>` User-Agent header
+  instead of the hardcoded `wk/dev`. Build-time version info injected via
+  goreleaser ldflags now flows through to the HTTP clients, making release
+  traffic distinguishable in backend telemetry. The MCP client previously sent
+  no User-Agent at all. ([#83](https://github.com/workato-devs/wk/pull/83))
+
 ### Fixed
 
 - `wk plugins install <name>` now works on Windows when the plugin was installed
