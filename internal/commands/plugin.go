@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -50,6 +51,11 @@ func newPluginsInstallCmd() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("resolving symlink: %w", err)
 				}
+				// On Windows, Scoop installs shims in a shims\ directory alongside a
+				// <name>.shim text file whose "path = ..." line points to the real exe.
+				// EvalSymlinks is a no-op for these stubs, so we check for a .shim file
+				// and redirect to the real binary's directory when found.
+				binPath = resolveScoopShim(binPath)
 				source, err = filepath.Abs(filepath.Dir(binPath))
 			} else {
 				source, err = filepath.Abs(source)
@@ -58,10 +64,16 @@ func newPluginsInstallCmd() *cobra.Command {
 				return fmt.Errorf("resolving path: %w", err)
 			}
 
-			manifestPath := filepath.Join(source, "plugin.toml")
-			if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
-				return fmt.Errorf("no plugin.toml found at %s", source)
+			// Walk upward from the resolved directory to find plugin.toml.
+			// This handles package managers that place the binary in a subdirectory
+			// (e.g. bin/) of the actual plugin root.
+			pluginDir, found := findPluginDir(source)
+			if !found {
+				return fmt.Errorf("no plugin.toml found at %s (or any parent directory)", source)
 			}
+			source = pluginDir
+
+			manifestPath := filepath.Join(source, "plugin.toml")
 
 			registry, err := plugin.NewRegistry()
 			if err != nil {
@@ -160,4 +172,52 @@ func newPluginsRemoveCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// resolveScoopShim detects a Windows Scoop shim and returns the path to the
+// real executable. Scoop writes a <name>.shim text file alongside the stub
+// .exe in the shims\ directory; that file contains a "path = <real-exe>"
+// line. On non-Windows systems or when no .shim file is found, binPath is
+// returned unchanged.
+func resolveScoopShim(binPath string) string {
+	// Strip extension to find the matching .shim sidecar file.
+	base := strings.TrimSuffix(binPath, filepath.Ext(binPath))
+	shimFile := base + ".shim"
+
+	f, err := os.Open(shimFile)
+	if err != nil {
+		return binPath // no .shim sidecar – not a Scoop shim
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if after, ok := strings.CutPrefix(line, "path = "); ok {
+			realPath := strings.Trim(after, `"`)
+			if realPath != "" {
+				return realPath
+			}
+		}
+	}
+	return binPath
+}
+
+// findPluginDir walks upward from dir until it finds a directory containing
+// plugin.toml, up to maxDepth levels. It returns the directory and true on
+// success, or ("", false) if none is found.
+func findPluginDir(dir string) (string, bool) {
+	const maxDepth = 3
+	current := dir
+	for i := 0; i < maxDepth; i++ {
+		if _, err := os.Stat(filepath.Join(current, "plugin.toml")); err == nil {
+			return current, true
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break // reached filesystem root
+		}
+		current = parent
+	}
+	return "", false
 }
