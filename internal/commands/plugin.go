@@ -198,7 +198,14 @@ func newPluginsRemoveCmd() *cobra.Command {
 func resolveScoopShim(binPath string) string {
 	// Strip extension to find the matching .shim sidecar file.
 	base := strings.TrimSuffix(binPath, filepath.Ext(binPath))
-	shimFile := base + ".shim"
+	shimFile := filepath.Clean(base + ".shim")
+
+	// Ensure the .shim sidecar resides in the same directory as the binary
+	// to prevent path traversal via a crafted binPath (CWE-22).
+	binDir := filepath.Dir(filepath.Clean(binPath))
+	if filepath.Dir(shimFile) != binDir {
+		return binPath
+	}
 
 	f, err := os.Open(shimFile)
 	if err != nil {
@@ -210,8 +217,11 @@ func resolveScoopShim(binPath string) string {
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if after, ok := strings.CutPrefix(line, "path = "); ok {
-			realPath := strings.Trim(after, `"`)
-			if realPath != "" {
+			// Clean the path and require it to be absolute to prevent
+			// directory traversal sequences (e.g. ../) in a malicious
+			// .shim file from escaping to arbitrary filesystem locations.
+			realPath := filepath.Clean(strings.Trim(after, `"`))
+			if realPath != "" && filepath.IsAbs(realPath) {
 				return realPath
 			}
 		}
