@@ -6,14 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Changed
-
-- All API and MCP HTTP requests now send a `wk-cli/<version>` User-Agent header
-  instead of the hardcoded `wk/dev`. Build-time version info injected via
-  goreleaser ldflags now flows through to the HTTP clients, making release
-  traffic distinguishable in backend telemetry. The MCP client previously sent
-  no User-Agent at all. ([#83](https://github.com/workato-devs/wk/pull/83))
-
 ### Fixed
 
 - `wk plugins install <name>` now works on Windows when the plugin was installed
@@ -30,6 +22,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `wk plugins install <name>` now walks up to 3 parent directories from the
   binary's location to find `plugin.toml`, covering layouts where the binary
   lives in a `bin/` subdirectory of the plugin root.
+
+## [1.0.1] - 2026-07-01
+
+### Changed
+
+- All API and MCP HTTP requests now send a `wk-cli/<version>` User-Agent header
+  instead of the hardcoded `wk/dev`. Build-time version info injected via
+  goreleaser ldflags now flows through to the HTTP clients, making release
+  traffic distinguishable in backend telemetry. The MCP client previously sent
+  no User-Agent at all. The User-Agent token uses `wk-cli` rather than the bare
+  `wk` to avoid collisions with unrelated tokens in nginx access logs.
+  ([#83](https://github.com/workato-devs/wk/pull/83))
+
+## [1.0.0] - 2026-06-28
+
+First public release.
+
+### Added
+
+- MCP: full server lifecycle management — create, update, delete, start, stop,
+  restart; `project_assets` tools for MCP server configuration
+  ([#71](https://github.com/workato-devs/wk/pull/71),
+  [#76](https://github.com/workato-devs/wk/pull/76))
+- Recipes: `wk recipes move` to relocate a recipe to a different folder
+  ([#77](https://github.com/workato-devs/wk/pull/77))
+- Recipes: canonical pull/export with actionable start-timeout messaging
+  ([#68](https://github.com/workato-devs/wk/pull/68),
+  [#70](https://github.com/workato-devs/wk/pull/70))
+- API Collections: `wk api collections delete`
+  ([#80](https://github.com/workato-devs/wk/pull/80))
+- Auth: `wk auth login` hardening — token masking, custom base URL support,
+  improved region UX ([#79](https://github.com/workato-devs/wk/pull/79))
+
+### Fixed
+
+- Recipes: `wk recipes copy` now returns the new recipe ID (decoded
+  `new_flow_id` from copy response)
+- Recipes: `wk recipes copy` sends `folder_id` as a string as the API expects
+- API Collections: `project_id` sent as a string to match API expectations
+- MCP: quota policy `interval` constrained to the API's allowed value set
+- MCP: corrected `server_policies` types and request shape
 
 ## [0.1.0-beta] - 2026-04-21
 
