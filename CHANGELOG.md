@@ -4,6 +4,25 @@ All notable changes to `wk` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- `wk plugins install <name>` now works on Windows when the plugin was installed
+  via Scoop. Previously, `exec.LookPath` resolved the name to Scoop's `shims\`
+  directory (a launcher stub, not the plugin root), causing a "no plugin.toml
+  found" error. The fix reads the `.shim` sidecar file that Scoop writes
+  alongside the stub to redirect to the real executable, then resolves the
+  plugin root from there. ([#85](https://github.com/workato-devs/wk/issues/85))
+- `wk plugins install <path>` on Windows no longer returns "Incorrect function"
+  when given a directory that is an NTFS junction (e.g. Scoop's `current\`
+  version alias). `filepath.WalkDir` treats junctions as regular files and
+  failed when `copyDir` tried to `ReadFile` a directory handle. The fix resolves
+  junctions via `os.Lstat` + `ModeIrregular` before copying. ([#85](https://github.com/workato-devs/wk/issues/85))
+- `wk plugins install <name>` now walks up to 3 parent directories from the
+  binary's location to find `plugin.toml`, covering layouts where the binary
+  lives in a `bin/` subdirectory of the plugin root.
+
 ## [0.1.0-beta] - 2026-04-21
 
 Initial beta release.

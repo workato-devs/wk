@@ -1,14 +1,16 @@
 # ADR-004: Plugin Repo Structure — Separate Repos, Not a Monorepo
 
 **Author(s):** Zayne Turner
-**Amended-by:** Claude [role: assistant; harness: Claude Code; model: Opus 4.8], dir. Zayne Turner — June 2026
+**Amended-by:** Claude [role: assistant; harness: Claude Code; model: Opus 4.8], dir. Zayne Turner — June 2026; Kiro [role: assistant; harness: Kiro; model: Claude Sonnet 4.6], dir. Chris Miller — July 2026
 **Status:** Accepted
 **Date:** March 3, 2026
 **Deciders:** DevRel Engineering
 **References:** ADR-001 (Decision 6: JSON-RPC Plugins), ADR-002 (Decision 8: Pre-Push Hooks), wk-lint-beta ADR-0001 (Tiered Lint Architecture)
 
 **Amendments:**
+
 - June 2026 — Repos renamed for public launch: `wk-cli-beta` → `wk`, `wk-lint-beta` → `recipe-lint`. Original names retained in the body below as the historical record.
+- July 2026 — Windows/Scoop install path resolution hardened; `plugin.toml` discovery now walks up parent directories. See amendment after Decision 3.
 
 ---
 
@@ -108,16 +110,16 @@ method = "lint.run"
 
 **Manifest fields:**
 
-| Field | Type | Purpose |
-|-------|------|---------|
-| `name` | string | Plugin identity, used as install directory name under `~/.wk/plugins/` |
-| `version` | string | Semver version for display and future update checking |
-| `description` | string | Human-readable description for `wk plugins list` |
-| `entrypoint` | string | Relative path to the plugin binary. Resolved against the plugin's install directory. |
-| `hooks.pre-push` | string | JSON-RPC method name for the pre-push hook. Empty string = no hook. |
-| `hooks.post-pull` | string | Reserved, not dispatched yet. |
-| `commands` | array | Commands the plugin registers on the CLI (name, description, method). |
-| `commands.subcommands` | array | Nested subcommands under a plugin command (name, description, method, args). |
+| Field                  | Type   | Purpose                                                                              |
+| ---------------------- | ------ | ------------------------------------------------------------------------------------ |
+| `name`                 | string | Plugin identity, used as install directory name under `~/.wk/plugins/`               |
+| `version`              | string | Semver version for display and future update checking                                |
+| `description`          | string | Human-readable description for `wk plugins list`                                     |
+| `entrypoint`           | string | Relative path to the plugin binary. Resolved against the plugin's install directory. |
+| `hooks.pre-push`       | string | JSON-RPC method name for the pre-push hook. Empty string = no hook.                  |
+| `hooks.post-pull`      | string | Reserved, not dispatched yet.                                                        |
+| `commands`             | array  | Commands the plugin registers on the CLI (name, description, method).                |
+| `commands.subcommands` | array  | Nested subcommands under a plugin command (name, description, method, args).         |
 
 **Implementation:** `internal/plugin/manifest.go` — `Manifest` struct parsed via `go-toml/v2`. `LoadManifest()` reads and unmarshals the TOML file.
 
@@ -139,6 +141,33 @@ wk plugins install .
 ```
 
 **Implementation:** `internal/plugin/registry.go` — `Registry` struct with `Install()`, `List()`, `Remove()`, `GetPluginDir()`. `Install()` reads the `plugin.toml` at the source path to determine the plugin name, then copies the entire directory (binary + manifest + any data files) into `~/.wk/plugins/<name>/`.
+
+> **Amendment (July 2026): Windows/Scoop path resolution hardened.**
+> The original install flow assumed that `filepath.EvalSymlinks` on the
+> `$PATH`-resolved binary would always yield a path whose parent directory
+> contains `plugin.toml`. This holds on Unix (symlinks from `/usr/local/bin`
+> point to the plugin root), but breaks on Windows with Scoop:
+>
+> - Scoop places a stub `.exe` in `scoop\shims\` alongside a `<name>.shim`
+>   text file (not a symlink) whose `path = ...` line points to the real binary.
+>   `EvalSymlinks` is a no-op for these stubs, so the old code resolved to the
+>   shims directory, which never contains `plugin.toml`.
+> - Scoop's versioned install directory (`scoop\apps\<name>\current\`) is an
+>   NTFS junction (reparse point). `filepath.WalkDir` treats junctions as
+>   regular files; `copyDir` then failed with `ERROR_INVALID_FUNCTION`
+>   ("Incorrect function") when trying to `os.ReadFile` a directory handle.
+>   On Unix the equivalent error is `EISDIR`, which Go maps differently.
+>
+> **Fix** (`internal/commands/plugin.go`, [#85](https://github.com/workato-devs/wk/issues/85)):
+>
+> 1. `resolveScoopShim()` — called after `EvalSymlinks`; reads the `.shim`
+>    sidecar to redirect `binPath` to the real executable. No-op on non-Windows.
+> 2. `resolveJunction()` — called on the resolved directory; uses `os.Lstat` +
+>    `ModeIrregular`/`ModeSymlink` and `os.Readlink` to resolve NTFS junctions
+>    before `copyDir` walks the tree. No-op on macOS/Linux.
+> 3. `findPluginDir()` — replaces the single `os.Stat` check with an upward
+>    walk (up to 3 levels) to find `plugin.toml`. Handles layouts where the
+>    binary lives in a `bin/` subdirectory of the plugin root.
 
 ### Decision 4: JSON-RPC over Stdio for Plugin Communication
 
@@ -192,13 +221,13 @@ Plugin writes to stdout:     {"jsonrpc":"2.0","result":{...},"id":1}\n
 
 **Tiered validation architecture:**
 
-| Tier | Scope | Implementation | Status |
-|------|-------|----------------|--------|
-| 0 | Schema validation (valid JSON, required keys, types) | `tier0_schema.go` | Implemented |
-| 1 | Step-level rules (numbering, UUIDs, providers, control flow) | `tier1_steps.go` | Implemented |
-| 1b | Datapill validation (formula mode, interpolation) | `tier1_datapills.go` | Planned |
-| 2 | Inter-step structure (requires IGM graph) | `tier2_structure.go` | Planned |
-| 3 | Cross-step data flow (requires IGM alias map) | `tier3_dataflow.go` | Planned |
+| Tier | Scope                                                        | Implementation       | Status      |
+| ---- | ------------------------------------------------------------ | -------------------- | ----------- |
+| 0    | Schema validation (valid JSON, required keys, types)         | `tier0_schema.go`    | Implemented |
+| 1    | Step-level rules (numbering, UUIDs, providers, control flow) | `tier1_steps.go`     | Implemented |
+| 1b   | Datapill validation (formula mode, interpolation)            | `tier1_datapills.go` | Planned     |
+| 2    | Inter-step structure (requires IGM graph)                    | `tier2_structure.go` | Planned     |
+| 3    | Cross-step data flow (requires IGM alias map)                | `tier3_dataflow.go`  | Planned     |
 
 Tier 0 errors halt evaluation — if the JSON isn't structurally valid, higher-tier rules that depend on parsed structures would produce misleading results.
 
@@ -224,24 +253,24 @@ This means plugins can be written in any language. A Python linter, a Rust forma
 
 ## What Stays from the Original Lint ADR
 
-| Original Proposal | Status | Notes |
-|-------------------|--------|-------|
-| `pkg/lint/` core library | **Implemented** (in wk-lint-beta, not wk-cli-beta) | Same package structure, different repo |
-| `plugin.toml` manifest | **Implemented** | Exact format as proposed |
-| `pre-push` hook protocol | **Implemented** | JSON-RPC method `lint.pre_push` |
-| `wk lint` plugin command | **Implemented** | Delegates to `lint.run` method |
-| Tiered architecture (0-3) | **Partially implemented** | Tiers 0-1a built, 1b-3 planned |
-| `.wklintrc.json` config | **Implemented** | Rule overrides + file ignore patterns |
-| Connector-specific `lint-rules.json` | **Implemented** | Loaded from `--skills-path` |
+| Original Proposal                    | Status                                             | Notes                                  |
+| ------------------------------------ | -------------------------------------------------- | -------------------------------------- |
+| `pkg/lint/` core library             | **Implemented** (in wk-lint-beta, not wk-cli-beta) | Same package structure, different repo |
+| `plugin.toml` manifest               | **Implemented**                                    | Exact format as proposed               |
+| `pre-push` hook protocol             | **Implemented**                                    | JSON-RPC method `lint.pre_push`        |
+| `wk lint` plugin command             | **Implemented**                                    | Delegates to `lint.run` method         |
+| Tiered architecture (0-3)            | **Partially implemented**                          | Tiers 0-1a built, 1b-3 planned         |
+| `.wklintrc.json` config              | **Implemented**                                    | Rule overrides + file ignore patterns  |
+| Connector-specific `lint-rules.json` | **Implemented**                                    | Loaded from `--skills-path`            |
 
 ## What Diverged from the Original Lint ADR
 
-| Original Proposal | Actual | Reason |
-|-------------------|--------|--------|
-| `pkg/lint/` in CLI monorepo | `pkg/lint/` in `wk-lint-beta` repo | Compile-time coupling undermines JSON-RPC protocol boundary |
-| Plugin binary at `wk-cli-beta/plugins/recipe-lint/` | Plugin binary at `wk-lint-beta/cmd/recipe-lint/` | Independent repo, independent releases |
-| GoReleaser builds plugin alongside CLI | Plugin has its own `Makefile` + build | Independent build pipeline |
-| `validate` subcommand alias | Implemented as `wk recipes validate` in `recipe.go` | Thin alias delegates to `lint.run` via plugin RPC |
+| Original Proposal                                   | Actual                                              | Reason                                                      |
+| --------------------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------- |
+| `pkg/lint/` in CLI monorepo                         | `pkg/lint/` in `wk-lint-beta` repo                  | Compile-time coupling undermines JSON-RPC protocol boundary |
+| Plugin binary at `wk-cli-beta/plugins/recipe-lint/` | Plugin binary at `wk-lint-beta/cmd/recipe-lint/`    | Independent repo, independent releases                      |
+| GoReleaser builds plugin alongside CLI              | Plugin has its own `Makefile` + build               | Independent build pipeline                                  |
+| `validate` subcommand alias                         | Implemented as `wk recipes validate` in `recipe.go` | Thin alias delegates to `lint.run` via plugin RPC           |
 
 ---
 
