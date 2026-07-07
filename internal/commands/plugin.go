@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -50,7 +51,21 @@ func newPluginsInstallCmd() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("resolving symlink: %w", err)
 				}
-				source, err = filepath.Abs(filepath.Dir(binPath))
+				// On Windows, Scoop installs shims in a shims\ directory alongside a
+				// <name>.shim text file whose "path = ..." line points to the real exe.
+				// EvalSymlinks is a no-op for these stubs, so we check for a .shim file
+				// and redirect to the real binary's directory when found.
+				binPath = resolveScoopShim(binPath)
+				// Resolve the directory — the .shim path may point through a
+				// junction (e.g. scoop\apps\<name>\current -> scoop\apps\<name>\1.0.0).
+				// On Windows, filepath.WalkDir treats junctions as files, so we
+				// must resolve to the real directory for copyDir to work.
+				dir := filepath.Dir(binPath)
+				dir, err = resolveJunction(dir)
+				if err != nil {
+					return fmt.Errorf("resolving plugin directory: %w", err)
+				}
+				source, err = filepath.Abs(dir)
 			} else {
 				source, err = filepath.Abs(source)
 			}
@@ -58,10 +73,23 @@ func newPluginsInstallCmd() *cobra.Command {
 				return fmt.Errorf("resolving path: %w", err)
 			}
 
-			manifestPath := filepath.Join(source, "plugin.toml")
-			if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
-				return fmt.Errorf("no plugin.toml found at %s", source)
+			// Resolve junctions/reparse points — on Windows, filepath.WalkDir
+			// treats junctions as regular files, causing copyDir to fail.
+			source, err = resolveJunction(source)
+			if err != nil {
+				return fmt.Errorf("resolving plugin directory: %w", err)
 			}
+
+			// Walk upward from the resolved directory to find plugin.toml.
+			// This handles package managers that place the binary in a subdirectory
+			// (e.g. bin/) of the actual plugin root.
+			pluginDir, found := findPluginDir(source)
+			if !found {
+				return fmt.Errorf("no plugin.toml found at %s (or any parent directory)", source)
+			}
+			source = pluginDir
+
+			manifestPath := filepath.Join(source, "plugin.toml")
 
 			registry, err := plugin.NewRegistry()
 			if err != nil {
@@ -160,4 +188,86 @@ func newPluginsRemoveCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// resolveScoopShim detects a Windows Scoop shim and returns the path to the
+// real executable. Scoop writes a <name>.shim text file alongside the stub
+// .exe in the shims\ directory; that file contains a "path = <real-exe>"
+// line. On non-Windows systems or when no .shim file is found, binPath is
+// returned unchanged.
+func resolveScoopShim(binPath string) string {
+	// Strip extension to find the matching .shim sidecar file.
+	base := strings.TrimSuffix(binPath, filepath.Ext(binPath))
+	shimFile := filepath.Clean(base + ".shim")
+
+	// Ensure the .shim sidecar resides in the same directory as the binary
+	// to prevent path traversal via a crafted binPath (CWE-22).
+	binDir := filepath.Dir(filepath.Clean(binPath))
+	if filepath.Dir(shimFile) != binDir {
+		return binPath
+	}
+
+	f, err := os.Open(shimFile)
+	if err != nil {
+		return binPath // no .shim sidecar – not a Scoop shim
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if after, ok := strings.CutPrefix(line, "path = "); ok {
+			// Clean the path and require it to be absolute to prevent
+			// directory traversal sequences (e.g. ../) in a malicious
+			// .shim file from escaping to arbitrary filesystem locations.
+			realPath := filepath.Clean(strings.Trim(after, `"`))
+			if realPath != "" && filepath.IsAbs(realPath) {
+				return realPath
+			}
+		}
+	}
+	return binPath
+}
+
+// findPluginDir walks upward from dir until it finds a directory containing
+// plugin.toml, up to maxDepth levels. It returns the directory and true on
+// success, or ("", false) if none is found.
+func findPluginDir(dir string) (string, bool) {
+	const maxDepth = 3
+	current := dir
+	for i := 0; i < maxDepth; i++ {
+		if _, err := os.Stat(filepath.Join(current, "plugin.toml")); err == nil {
+			return current, true
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break // reached filesystem root
+		}
+		current = parent
+	}
+	return "", false
+}
+
+// resolveJunction resolves Windows NTFS junctions (reparse points) to their
+// real target directory. On non-Windows systems or when the path is not a
+// junction, it returns the original path unchanged.
+func resolveJunction(dir string) (string, error) {
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return dir, nil
+	}
+	// On Windows, NTFS junctions appear as ModeIrregular (not ModeSymlink).
+	// We also check ModeSymlink for regular symlinks.
+	mode := info.Mode().Type()
+	if mode&os.ModeSymlink != 0 || mode&os.ModeIrregular != 0 {
+		target, err := os.Readlink(dir)
+		if err != nil {
+			return dir, nil // not resolvable, use as-is
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(dir), target)
+		}
+		return target, nil
+	}
+	return dir, nil
 }
