@@ -56,12 +56,28 @@ func newPluginsInstallCmd() *cobra.Command {
 				// EvalSymlinks is a no-op for these stubs, so we check for a .shim file
 				// and redirect to the real binary's directory when found.
 				binPath = resolveScoopShim(binPath)
-				source, err = filepath.Abs(filepath.Dir(binPath))
+				// Resolve the directory — the .shim path may point through a
+				// junction (e.g. scoop\apps\<name>\current -> scoop\apps\<name>\1.0.0).
+				// On Windows, filepath.WalkDir treats junctions as files, so we
+				// must resolve to the real directory for copyDir to work.
+				dir := filepath.Dir(binPath)
+				dir, err = resolveJunction(dir)
+				if err != nil {
+					return fmt.Errorf("resolving plugin directory: %w", err)
+				}
+				source, err = filepath.Abs(dir)
 			} else {
 				source, err = filepath.Abs(source)
 			}
 			if err != nil {
 				return fmt.Errorf("resolving path: %w", err)
+			}
+
+			// Resolve junctions/reparse points — on Windows, filepath.WalkDir
+			// treats junctions as regular files, causing copyDir to fail.
+			source, err = resolveJunction(source)
+			if err != nil {
+				return fmt.Errorf("resolving plugin directory: %w", err)
 			}
 
 			// Walk upward from the resolved directory to find plugin.toml.
@@ -220,4 +236,28 @@ func findPluginDir(dir string) (string, bool) {
 		current = parent
 	}
 	return "", false
+}
+
+// resolveJunction resolves Windows NTFS junctions (reparse points) to their
+// real target directory. On non-Windows systems or when the path is not a
+// junction, it returns the original path unchanged.
+func resolveJunction(dir string) (string, error) {
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return dir, nil
+	}
+	// On Windows, NTFS junctions appear as ModeIrregular (not ModeSymlink).
+	// We also check ModeSymlink for regular symlinks.
+	mode := info.Mode().Type()
+	if mode&os.ModeSymlink != 0 || mode&os.ModeIrregular != 0 {
+		target, err := os.Readlink(dir)
+		if err != nil {
+			return dir, nil // not resolvable, use as-is
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(dir), target)
+		}
+		return target, nil
+	}
+	return dir, nil
 }
