@@ -1,6 +1,9 @@
 package api
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Recipe represents a Workato recipe.
 type Recipe struct {
@@ -113,27 +116,83 @@ type Job struct {
 // JobDetail is the single-job response from GET /recipes/{id}/jobs/{job_id}.
 type JobDetail struct {
 	Job
-	Handle           string    `json:"handle,omitempty"`
-	IsRepeat         bool      `json:"is_repeat"`
-	IsTest           bool      `json:"is_test"`
-	IsTestCaseJob    bool      `json:"is_test_case_job"`
-	MasterJobHandle  string    `json:"master_job_handle,omitempty"`
-	CallingJobHandle string    `json:"calling_job_handle,omitempty"`
-	Lines            []JobLine `json:"lines,omitempty"`
+	Handle           string      `json:"handle,omitempty"`
+	IsRepeat         bool        `json:"is_repeat"`
+	IsTest           bool        `json:"is_test"`
+	IsTestCaseJob    bool        `json:"is_test_case_job"`
+	MasterJobHandle  string      `json:"master_job_handle,omitempty"`
+	CallingJobHandle string      `json:"calling_job_handle,omitempty"`
+	Lines            []JobLine   `json:"lines,omitempty"`
+	ErrorParts       *ErrorParts `json:"error_parts,omitempty"`
+	JobCorrelationID string      `json:"job_correlation_id,omitempty"`
 }
 
-// JobLine represents a single step in a job execution trace.
+// JobLine represents a single step in a job execution trace. Beyond the
+// step identity and timing, the API returns the step's input/output data
+// and, on failures, full error diagnostics (error_details.http_response).
+// Input/Output are held as raw JSON because their shape is per-adapter.
 type JobLine struct {
-	RecipeLineNumber int       `json:"recipe_line_number"`
-	AdapterName      string    `json:"adapter_name"`
-	AdapterOperation string    `json:"adapter_operation"`
-	LineStat         *LineStat `json:"line_stat,omitempty"`
+	RecipeLineNumber int              `json:"recipe_line_number"`
+	AdapterName      string           `json:"adapter_name"`
+	AdapterOperation string           `json:"adapter_operation"`
+	LineStat         *LineStat        `json:"line_stat,omitempty"`
+	Input            json.RawMessage  `json:"input,omitempty"`
+	Output           json.RawMessage  `json:"output,omitempty"`
+	Error            *string          `json:"error,omitempty"`
+	ErrorDescriptor  *ErrorDescriptor `json:"error_descriptor,omitempty"`
+	ErrorDetails     *ErrorDetails    `json:"error_details,omitempty"`
 }
 
-// LineStat holds timing data for a job step.
+// LineStat holds timing data for a job step. Total is the step's total
+// duration in seconds (a fractional value, e.g. 0.0079); Details breaks
+// that down into sub-phases.
 type LineStat struct {
-	StartedAt   *time.Time `json:"started_at,omitempty"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	StartedAt   *time.Time       `json:"started_at,omitempty"`
+	CompletedAt *time.Time       `json:"completed_at,omitempty"`
+	Total       *float64         `json:"total,omitempty"`
+	Details     []LineStatDetail `json:"details,omitempty"`
+}
+
+// LineStatDetail is one sub-phase of a step's timing breakdown. The API
+// reports each sub-phase as a set of duration metrics in seconds (Count is
+// the sample count); there is no scalar "value" field.
+type LineStatDetail struct {
+	Name    string   `json:"name,omitempty"`
+	Count   *int     `json:"count,omitempty"`
+	Average *float64 `json:"average,omitempty"`
+	Total   *float64 `json:"total,omitempty"`
+	Min     *float64 `json:"min,omitempty"`
+	Max     *float64 `json:"max,omitempty"`
+}
+
+// ErrorDescriptor carries a structured error classification for a failed
+// job step, when the API provides one.
+type ErrorDescriptor struct {
+	Type    string `json:"type,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+// ErrorDetails holds the diagnostic payload for a failed step, most
+// importantly the downstream HTTP response that caused the failure.
+type ErrorDetails struct {
+	HTTPResponse *HTTPResponse `json:"http_response,omitempty"`
+}
+
+// HTTPResponse is the downstream HTTP response captured on a step failure
+// (e.g. a 401 from a called API). Headers are returned as raw JSON since
+// the key set is arbitrary.
+type HTTPResponse struct {
+	Code          int             `json:"code,omitempty"`
+	RawStatusText string          `json:"raw_status_text,omitempty"`
+	Body          string          `json:"body,omitempty"`
+	Headers       json.RawMessage `json:"headers,omitempty"`
+}
+
+// ErrorParts is the job-level structured error breakdown returned
+// alongside the flat error string.
+type ErrorParts struct {
+	Message string `json:"message,omitempty"`
+	Type    string `json:"type,omitempty"`
 }
 
 // ListResult is a generic wrapper for paginated API responses

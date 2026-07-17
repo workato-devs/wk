@@ -118,6 +118,23 @@ func TestStructFieldCoverage(t *testing.T) {
 				"root_recipe_id", "root_job_id", "master_job_id",
 				"handle", "is_repeat", "is_test", "is_test_case_job",
 				"master_job_handle", "calling_job_handle", "lines",
+				"error_parts", "job_correlation_id",
+			},
+		},
+		{
+			name:       "JobLine",
+			structType: reflect.TypeOf(JobLine{}),
+			expectedFields: []string{
+				"recipe_line_number", "adapter_name", "adapter_operation",
+				"line_stat", "input", "output", "error",
+				"error_descriptor", "error_details",
+			},
+		},
+		{
+			name:       "LineStat",
+			structType: reflect.TypeOf(LineStat{}),
+			expectedFields: []string{
+				"started_at", "completed_at", "total", "details",
 			},
 		},
 		{

@@ -47,9 +47,27 @@ func TestRecipeService_GetJob(t *testing.T) {
 		resp := `{
 			"id": "j-abc123", "recipe_id": 42, "status": "failed",
 			"is_error": true, "error": "Connection timeout",
-			"handle": "j-abc123",
+			"handle": "j-abc123", "job_correlation_id": "corr-xyz",
 			"lines": [
-				{"recipe_line_number": 1, "adapter_name": "rest", "adapter_operation": "make_request_v2"},
+				{
+					"recipe_line_number": 1, "adapter_name": "rest", "adapter_operation": "make_request_v2",
+					"input": {"url": "https://example.com"},
+					"line_stat": {
+						"total": 0.0079,
+						"details": [
+							{"name": "http", "count": 1, "average": 0.0079, "total": 0.0079, "min": 0.0079, "max": 0.0079}
+						]
+					},
+					"error": "No automatic OAuth refresh available, needs user re-authorization.",
+					"error_details": {
+						"http_response": {
+							"code": 401,
+							"raw_status_text": "Unauthorized",
+							"body": "{\"code\":401,\"message\":\"Unauthorized\"}",
+							"headers": {"x_failure_category": "FAILURE_CLIENT_AUTH"}
+						}
+					}
+				},
 				{"recipe_line_number": 2, "adapter_name": "logger", "adapter_operation": "log_message"}
 			]
 		}`
@@ -76,6 +94,45 @@ func TestRecipeService_GetJob(t *testing.T) {
 	}
 	if detail.Lines[0].AdapterName != "rest" {
 		t.Errorf("lines[0].adapter_name = %q, want rest", detail.Lines[0].AdapterName)
+	}
+	// Per-step diagnostics must survive unmarshalling (issue #89): the
+	// step error and the downstream HTTP response are the whole point of
+	// fetching a single job's detail.
+	if detail.JobCorrelationID != "corr-xyz" {
+		t.Errorf("job_correlation_id = %q, want corr-xyz", detail.JobCorrelationID)
+	}
+	line := detail.Lines[0]
+	if line.Error == nil || *line.Error == "" {
+		t.Fatalf("lines[0].error = %v, want non-empty step error", line.Error)
+	}
+	if line.ErrorDetails == nil || line.ErrorDetails.HTTPResponse == nil {
+		t.Fatalf("lines[0].error_details.http_response is nil, want the captured 401")
+	}
+	if got := line.ErrorDetails.HTTPResponse.Code; got != 401 {
+		t.Errorf("lines[0].error_details.http_response.code = %d, want 401", got)
+	}
+	if len(line.Input) == 0 {
+		t.Errorf("lines[0].input was dropped, want raw JSON preserved")
+	}
+	// Timing decodes as fractional seconds (issue #89 regression): the API
+	// returns line_stat.total as a float like 0.0079, and each detail is a
+	// {count, average, total, min, max} metric set — an int-typed total or a
+	// scalar "value" detail hard-fails the whole decode.
+	if line.LineStat == nil || line.LineStat.Total == nil {
+		t.Fatalf("lines[0].line_stat.total is nil, want fractional duration")
+	}
+	if got := *line.LineStat.Total; got != 0.0079 {
+		t.Errorf("lines[0].line_stat.total = %v, want 0.0079", got)
+	}
+	if len(line.LineStat.Details) != 1 {
+		t.Fatalf("lines[0].line_stat.details = %d, want 1", len(line.LineStat.Details))
+	}
+	d := line.LineStat.Details[0]
+	if d.Name != "http" || d.Count == nil || *d.Count != 1 {
+		t.Errorf("detail = {name:%q count:%v}, want {http 1}", d.Name, d.Count)
+	}
+	if d.Average == nil || d.Total == nil || d.Min == nil || d.Max == nil {
+		t.Errorf("detail metrics dropped: avg:%v total:%v min:%v max:%v", d.Average, d.Total, d.Min, d.Max)
 	}
 }
 

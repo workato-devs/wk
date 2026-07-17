@@ -18,6 +18,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `wk recipes jobs get` no longer silently drops per-step diagnostics. `JobLine`
+  now carries `input`, `output`, `error`, `error_descriptor`, and
+  `error_details` (including the downstream `http_response` status/body/headers);
+  `LineStat` gains `total`/`details` and `JobDetail` gains `error_parts`/
+  `job_correlation_id`. `--json` surfaces the full payload and text output prints
+  per-step errors. ([#89](https://github.com/workato-devs/wk/issues/89))
 - `wk plugins install <name>` now works on Windows when the plugin was installed
   via Scoop. Previously, `exec.LookPath` resolved the name to Scoop's `shims\`
   directory (a launcher stub, not the plugin root), causing a "no plugin.toml

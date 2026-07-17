@@ -561,7 +561,25 @@ func newRecipesJobsGetCmd() *cobra.Command {
 						completed,
 					})
 				}
-				return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+				if err := rctx.Formatter.FormatList(os.Stdout, headers, rows); err != nil {
+					return err
+				}
+
+				// Surface per-step errors so failures aren't silent in text
+				// mode. Full diagnostics (input/output/headers) are in --json.
+				for _, line := range detail.Lines {
+					if line.Error == nil || *line.Error == "" {
+						continue
+					}
+					fmt.Fprintf(os.Stdout, "\nStep %d error: %s\n", line.RecipeLineNumber, *line.Error)
+					if line.ErrorDetails != nil && line.ErrorDetails.HTTPResponse != nil {
+						hr := line.ErrorDetails.HTTPResponse
+						fmt.Fprintf(os.Stdout, "  HTTP %d %s\n", hr.Code, hr.RawStatusText)
+						if hr.Body != "" {
+							fmt.Fprintf(os.Stdout, "  Body: %s\n", hr.Body)
+						}
+					}
+				}
 			}
 			return nil
 		},
