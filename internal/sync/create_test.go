@@ -67,6 +67,18 @@ func (m *createMockFolders) DeleteProject(_ context.Context, _ int) error {
 	return nil
 }
 
+func (m *createMockFolders) ListProjects(_ context.Context) ([]api.Folder, error) {
+	return nil, nil
+}
+
+func (m *createMockFolders) Update(_ context.Context, _ int, _ string) (*api.Folder, error) {
+	return nil, nil
+}
+
+func (m *createMockFolders) UpdateProject(_ context.Context, _ int, _ string) (*api.Folder, error) {
+	return nil, nil
+}
+
 func newCreateEngine(cfg *config.Config, folders *createMockFolders) *SyncEngine {
 	return &SyncEngine{
 		config:  cfg,

@@ -18,18 +18,21 @@ func newFoldersCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newFoldersListCmd())
 	cmd.AddCommand(newFoldersCreateCmd())
+	cmd.AddCommand(newFoldersUpdateCmd())
 	cmd.AddCommand(newFoldersDeleteCmd())
 	return cmd
 }
 
 func newFoldersListCmd() *cobra.Command {
 	var parentID int
+	var projectsOnly bool
 
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List folders",
 		Example: `  wk folders list
-  wk folders list --parent 123 --json`,
+  wk folders list --parent 123 --json
+  wk folders list --projects`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -40,12 +43,22 @@ func newFoldersListCmd() *cobra.Command {
 				return err
 			}
 
-			var pid *int
-			if cmd.Flags().Changed("parent") {
-				pid = &parentID
+			if projectsOnly && cmd.Flags().Changed("parent") {
+				return fmt.Errorf("--projects and --parent are mutually exclusive (GET /projects is not scoped by parent)")
 			}
 
-			folders, err := client.Folders().List(cmd.Context(), pid)
+			var folders []api.Folder
+			if projectsOnly {
+				// Projects have their own endpoint (GET /projects) rather
+				// than being inferred from the folder list's is_project flag.
+				folders, err = client.Folders().ListProjects(cmd.Context())
+			} else {
+				var pid *int
+				if cmd.Flags().Changed("parent") {
+					pid = &parentID
+				}
+				folders, err = client.Folders().List(cmd.Context(), pid)
+			}
 			if err != nil {
 				return err
 			}
@@ -72,6 +85,81 @@ func newFoldersListCmd() *cobra.Command {
 	}
 
 	cmd.Flags().IntVar(&parentID, "parent", 0, "Parent folder ID")
+	cmd.Flags().BoolVar(&projectsOnly, "projects", false, "List projects via GET /projects instead of folders")
+	return cmd
+}
+
+func newFoldersUpdateCmd() *cobra.Command {
+	var name string
+
+	cmd := &cobra.Command{
+		Use:     "update <id>",
+		Short:   "Rename a folder or project",
+		Example: `  wk folders update 123 --name "New name"`,
+		Long: `Rename a top-level Workato project or a nested folder. The Workato
+API uses separate endpoints — PUT /projects/{id} for projects
+(is_project=true), PUT /folders/{id} for plain folders. This
+command lists top-level folders first and routes to the correct
+endpoint based on the target's is_project flag (mirroring delete).`,
+		Args: requireArgs(1, "folder ID is required, e.g.: wk folders update <id> --name <new>"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rctx, err := BuildRunContext(cmd)
+			if err != nil {
+				return err
+			}
+			client, _, err := resolveAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+
+			if name == "" {
+				return fmt.Errorf("--name is required")
+			}
+
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid folder ID: %s", args[0])
+			}
+
+			// Projects are always top-level; a single list call at the
+			// workspace root resolves both is_project and project_id. If
+			// the target isn't in the root list it's a nested folder,
+			// which always routes to PUT /folders/{id}.
+			topLevel, err := client.Folders().List(cmd.Context(), nil)
+			if err != nil {
+				return fmt.Errorf("listing top-level folders to determine type: %w", err)
+			}
+			var match *api.Folder
+			for i, f := range topLevel {
+				if f.ID == id {
+					match = &topLevel[i]
+					break
+				}
+			}
+
+			var updated *api.Folder
+			if match != nil && match.IsProject {
+				// PUT /projects/{project_id} — not folder_id.
+				if match.ProjectID == 0 {
+					return fmt.Errorf("folder %d is a project but the API did not return project_id; cannot route update", id)
+				}
+				updated, err = client.Folders().UpdateProject(cmd.Context(), match.ProjectID, name)
+			} else {
+				updated, err = client.Folders().Update(cmd.Context(), id, name)
+			}
+			if err != nil {
+				return err
+			}
+
+			if flagJSON {
+				return rctx.Formatter.Format(os.Stdout, updated)
+			}
+			fmt.Fprintf(os.Stderr, "Renamed %d to %q\n", id, updated.Name)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&name, "name", "", "New name for the folder or project (required)")
 	return cmd
 }
 
@@ -83,7 +171,7 @@ func newFoldersCreateCmd() *cobra.Command {
 		Short: "Create a folder",
 		Example: `  wk folders create "Marketing Recipes"
   wk folders create "Subfolder" --parent 123 --json`,
-		Args:  requireArgs(1, "folder name is required, e.g.: wk folders create <name>"),
+		Args: requireArgs(1, "folder name is required, e.g.: wk folders create <name>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -119,8 +207,8 @@ func newFoldersCreateCmd() *cobra.Command {
 
 func newFoldersDeleteCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "delete <id>",
-		Short: "Delete a folder or project",
+		Use:     "delete <id>",
+		Short:   "Delete a folder or project",
 		Example: `  wk folders delete 123`,
 		Long: `Delete a top-level Workato project or a nested folder. The Workato
 API uses separate endpoints — DELETE /projects/{id} for projects

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `wk folders update <id> --name <new>` renames a folder or project, routing to
+  `PUT /projects/{id}` or `PUT /folders/{id}` by `is_project` (mirroring
+  `delete`). `wk folders list --projects` lists projects via `GET /projects`.
+  Completes coverage of the Projects & folders permission.
+  ([#91](https://github.com/workato-devs/wk/issues/91))
+- `docs/known-limitations.md` — a permission-by-permission map of `wk` CLI
+  coverage, organized to mirror the Client Role editor.
+
 ### Fixed
 
 - `wk plugins install <name>` now works on Windows when the plugin was installed
