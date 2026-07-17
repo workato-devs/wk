@@ -63,8 +63,64 @@ func newFoldersListCmd() *cobra.Command {
 				return err
 			}
 
+			if projectsOnly {
+				// A project IS a folder on the server — the top-level container
+				// whose children are plain folders — so its constant identity is
+				// its folder id, and project_id is an additive attribute. But
+				// GET /projects reports each project's project_id as the object's
+				// `id` and omits the folder id, which is the opposite of what
+				// callers expect and NOT the id `wk folders update/delete` accept
+				// (those take the folder id and route to the project endpoint via
+				// is_project/project_id). Left as-is, copying an id from this list
+				// — table or --json — into update/delete hits PUT /folders/{project_id}:
+				// a 404, or worse a silent rename of an unrelated folder on an id
+				// collision. Normalize every project so `id` is its folder id (the
+				// constant identity) and `project_id` rides along, by cross-
+				// referencing the root folder list, which carries both. This fixes
+				// the table and the --json automation path from one source.
+				byProjectID := map[int]int{}
+				if roots, rerr := client.Folders().List(cmd.Context(), nil); rerr == nil {
+					for _, r := range roots {
+						if r.IsProject && r.ProjectID != 0 {
+							byProjectID[r.ProjectID] = r.ID
+						}
+					}
+				} else {
+					fmt.Fprintf(os.Stderr, "warning: could not resolve folder ids for projects: %v\n", rerr)
+				}
+				for i := range folders {
+					projectID := folders[i].ID
+					folders[i].ProjectID = projectID
+					folders[i].IsProject = true
+					if fid, ok := byProjectID[projectID]; ok {
+						folders[i].ID = fid
+					} else {
+						// Folder id unresolved: report 0 rather than passing the
+						// project_id off as the folder id.
+						folders[i].ID = 0
+					}
+				}
+			}
+
 			if flagJSON {
 				return rctx.Formatter.Format(os.Stdout, folders)
+			}
+
+			if projectsOnly {
+				headers := []string{"FOLDER ID", "PROJECT ID", "NAME"}
+				var rows [][]string
+				for _, f := range folders {
+					folderID := "—"
+					if f.ID != 0 {
+						folderID = strconv.Itoa(f.ID)
+					}
+					rows = append(rows, []string{
+						folderID,
+						strconv.Itoa(f.ProjectID),
+						f.Name,
+					})
+				}
+				return rctx.Formatter.FormatList(os.Stdout, headers, rows)
 			}
 
 			headers := []string{"ID", "NAME", "PARENT ID"}
