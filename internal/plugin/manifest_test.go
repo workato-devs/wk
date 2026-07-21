@@ -173,6 +173,57 @@ type = "int-array"
 	}
 }
 
+func TestLoadManifestWithRenderers(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "plugin.toml")
+
+	content := `name = "render-plugin"
+version = "1.0.0"
+description = "Plugin with renderers"
+entrypoint = "./bin/render"
+
+[[commands]]
+name = "lint"
+description = "Run linter"
+method = "lint.run"
+renderer = "lint.render"
+
+[[commands]]
+name = "recipes"
+description = "Recipe tools"
+
+[[commands.subcommands]]
+name = "inspect"
+description = "Inspect a recipe"
+method = "recipes.inspect"
+renderer = "recipes.render_inspection"
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := LoadManifest(path)
+	if err != nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+
+	if got := m.Commands[0].Renderer; got != "lint.render" {
+		t.Errorf("Commands[0].Renderer = %q, want %q", got, "lint.render")
+	}
+	if got := m.Commands[1].Subcommands[0].Renderer; got != "recipes.render_inspection" {
+		t.Errorf("Subcommands[0].Renderer = %q, want %q", got, "recipes.render_inspection")
+	}
+	if got := m.RendererForMethod("lint.run"); got != "lint.render" {
+		t.Errorf("RendererForMethod(lint.run) = %q, want %q", got, "lint.render")
+	}
+	if got := m.RendererForMethod("recipes.inspect"); got != "recipes.render_inspection" {
+		t.Errorf("RendererForMethod(recipes.inspect) = %q, want %q", got, "recipes.render_inspection")
+	}
+	if got := m.RendererForMethod("missing.method"); got != "" {
+		t.Errorf("RendererForMethod(missing.method) = %q, want empty", got)
+	}
+}
+
 func TestLoadManifestNotFound(t *testing.T) {
 	_, err := LoadManifest("/nonexistent/plugin.toml")
 	if err == nil {

@@ -1,10 +1,8 @@
 package commands
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -1172,10 +1170,10 @@ The recipe-lint plugin must be installed (wk plugins install <path>).`,
 			if err != nil {
 				return fmt.Errorf("recipe-lint plugin manifest unreadable: %w", err)
 			}
-			_ = m
 
 			def := &pluginCmdDef{
-				Args: []plugin.Arg{{Name: "files", Description: "Recipe files to lint", Required: true}},
+				Renderer: m.RendererForMethod("lint.run"),
+				Args:     []plugin.Arg{{Name: "files", Description: "Recipe files to lint", Required: true}},
 				Flags: []plugin.Flag{
 					{Name: "tiers", Description: "Lint tier levels to run", Type: "int-array"},
 					{Name: "skills-path", Description: "Path to connector skills directory", Type: "string"},
@@ -1232,52 +1230,49 @@ func surfaceActivationFailure(cmd *cobra.Command, client api.Client, id int, tim
 	tmp.Close()
 
 	fmt.Fprintln(os.Stderr, "\nValidating the recipe definition (equivalent to wk recipes validate):")
-	result, lintErr := lintRecipeFile(tmp.Name())
+	execution, lintErr := lintRecipeFile(tmp.Name(), cmd.CommandPath())
 	switch {
 	case errors.Is(lintErr, errRecipeLintUnavailable):
 		fmt.Fprintln(os.Stderr, "  recipe-lint plugin not installed — install it (wk plugins install <path>) and re-run, or open the recipe in the Workato editor to read the step warnings.")
 	case lintErr != nil:
 		fmt.Fprintf(os.Stderr, "  validation could not run: %v\n", lintErr)
 	default:
-		printLintResult(os.Stderr, result)
+		if err := writePluginTextResult(os.Stderr, os.Stderr, execution); err != nil {
+			fmt.Fprintf(os.Stderr, "  validation output could not be displayed: %v\n", err)
+		}
 	}
 }
 
-// lintRecipeFile runs the recipe-lint plugin's lint.run on path and returns
-// the raw result envelope, or errRecipeLintUnavailable when the plugin is not
-// installed. It invokes the plugin host directly (rather than makePluginRunE)
+// lintRecipeFile runs the recipe-lint plugin's lint.run on path and, when the
+// manifest declares one, its renderer. It returns errRecipeLintUnavailable
+// when the plugin is not installed. It invokes the plugin host directly
 // because the calling command does not declare the lint flags.
-func lintRecipeFile(path string) (json.RawMessage, error) {
+func lintRecipeFile(path, commandPath string) (pluginExecution, error) {
 	reg, err := plugin.NewRegistry()
 	if err != nil {
-		return nil, errRecipeLintUnavailable
+		return pluginExecution{}, errRecipeLintUnavailable
 	}
 	dir, err := reg.GetPluginDir("recipe-lint")
 	if err != nil {
-		return nil, errRecipeLintUnavailable
+		return pluginExecution{}, errRecipeLintUnavailable
 	}
 
 	host := plugin.NewPluginHost()
 	defer host.StopAll()
 	if err := host.Load(dir); err != nil {
-		return nil, fmt.Errorf("loading recipe-lint plugin: %w", err)
+		return pluginExecution{}, fmt.Errorf("loading recipe-lint plugin: %w", err)
 	}
 	m, _ := plugin.LoadManifest(filepath.Join(dir, "plugin.toml"))
 	if m == nil {
-		return nil, fmt.Errorf("cannot read recipe-lint manifest")
+		return pluginExecution{}, fmt.Errorf("cannot read recipe-lint manifest")
 	}
-	return host.Execute(m.Name, "lint.run", map[string]any{"files": []string{path}})
-}
-
-// printLintResult renders the lint envelope as indented JSON, falling back to
-// the raw bytes if it does not parse.
-func printLintResult(w io.Writer, result json.RawMessage) {
-	var v any
-	if json.Unmarshal(result, &v) == nil {
-		if b, err := json.MarshalIndent(v, "  ", "  "); err == nil {
-			fmt.Fprintf(w, "  %s\n", b)
-			return
-		}
-	}
-	fmt.Fprintf(w, "  %s\n", string(result))
+	return executePluginMethod(
+		host,
+		m.Name,
+		"lint.run",
+		m.RendererForMethod("lint.run"),
+		map[string]any{"files": []string{path}},
+		plugin.RenderContext{Format: plugin.RenderFormatText, CommandPath: commandPath},
+		true,
+	)
 }
