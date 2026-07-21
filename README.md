@@ -218,7 +218,7 @@ project_id = 679
 ## Plugin system
 
 Plugins extend `wk` with additional commands via JSON-RPC. A plugin is a
-directory containing a `plugin.toml` manifest and a Go binary entrypoint.
+directory containing a `plugin.toml` manifest and an executable entrypoint.
 The linter (`recipe-lint`) is the primary plugin.
 
 ```sh
@@ -239,7 +239,33 @@ entrypoint = "./recipe-lint"
 name = "lint"
 description = "Validate recipe files"
 method = "lint.run"
+renderer = "lint.render" # optional human-readable text renderer
 ```
+
+The command method always returns the canonical structured result. With
+`--json`, `wk` prints that result directly and does not invoke the renderer.
+For text output, `wk` makes an optional second RPC call to the declared
+renderer in the same plugin process:
+
+```json
+{
+  "result": { "exit_code": 0, "files": [] },
+  "context": { "format": "text", "command_path": "wk lint" }
+}
+```
+
+The renderer returns `{ "text": "..." }`. It is a presentation-only step: it
+must not rerun the command or determine its exit status. `wk` owns stdout,
+stderr, the process exit code, and fallback behavior. If no renderer is
+declared, the CLI prints deterministic indented JSON. If a renderer fails or
+returns a malformed response, the CLI warns on stderr, uses the same fallback,
+and preserves the primary command result and exit code. Renderers should ignore
+unknown context fields so the request can be extended compatibly. Renderer text
+may omit its final newline; `wk` adds one when needed.
+
+The renderer field is optional and additive. Plugins must keep all canonical
+data in the primary result and work when the renderer is not called, because an
+older `wk` version may ignore the field and a caller may always request JSON.
 
 ## Working safely
 
