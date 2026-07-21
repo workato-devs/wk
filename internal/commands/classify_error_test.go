@@ -1,9 +1,11 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
+	"github.com/workato-devs/wk/internal/api"
 	wkerrors "github.com/workato-devs/wk/internal/errors"
 )
 
@@ -82,5 +84,29 @@ func TestClassifyError_FmtWrappedSentinel(t *testing.T) {
 	err := fmt.Errorf("context: %w", wkerrors.ErrAPINotFound)
 	if got := classifyError(err); got != wkerrors.ExitAPI {
 		t.Errorf("classifyError(fmt.Errorf %%w) = %d, want %d (ExitAPI)", got, wkerrors.ExitAPI)
+	}
+}
+
+func TestClassifyError_ActivationBlocked_IsValidation(t *testing.T) {
+	err := fmt.Errorf("starting recipe 42: %w", &api.ActivationError{RecipeID: 42})
+	if got := classifyError(err); got != wkerrors.ExitValidation {
+		t.Errorf("classifyError(ActivationError) = %d, want %d (ExitValidation)", got, wkerrors.ExitValidation)
+	}
+}
+
+func TestClassifyError_JoinedActivationErrors_IsValidation(t *testing.T) {
+	err := errors.Join(
+		&api.ActivationError{RecipeID: 1},
+		&api.ActivationError{RecipeID: 2},
+	)
+	if got := classifyError(err); got != wkerrors.ExitValidation {
+		t.Errorf("classifyError(joined ActivationErrors) = %d, want %d (ExitValidation)", got, wkerrors.ExitValidation)
+	}
+}
+
+func TestClassifyError_MutationRefused_IsValidation(t *testing.T) {
+	err := fmt.Errorf("wrapped: %w", &api.MutationRefusedError{Op: "deleting recipe 42", Reasons: []string{"invalid state running"}})
+	if got := classifyError(err); got != wkerrors.ExitValidation {
+		t.Errorf("classifyError(MutationRefusedError) = %d, want %d (ExitValidation)", got, wkerrors.ExitValidation)
 	}
 }
