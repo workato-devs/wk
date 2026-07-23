@@ -138,6 +138,36 @@ func TestStructFieldCoverage(t *testing.T) {
 			},
 		},
 		{
+			name:       "ErrorDescriptor",
+			structType: reflect.TypeOf(ErrorDescriptor{}),
+			expectedFields: []string{
+				"error_type", "error_id", "line_number", "adapter",
+				"error_at", "error_type_id", "actionable", "action", "trigger",
+			},
+		},
+		{
+			name:       "ErrorDetails",
+			structType: reflect.TypeOf(ErrorDetails{}),
+			expectedFields: []string{
+				"message", "inner_message", "http_response",
+			},
+		},
+		{
+			name:       "HTTPResponse",
+			structType: reflect.TypeOf(HTTPResponse{}),
+			expectedFields: []string{
+				"protocol", "code", "raw_status_text", "normalized_status_text", "body", "headers",
+			},
+		},
+		{
+			name:       "ErrorParts",
+			structType: reflect.TypeOf(ErrorParts{}),
+			expectedFields: []string{
+				"message", "error_type", "error_id", "action",
+				"line_number", "adapter", "retry_count",
+			},
+		},
+		{
 			name:       "Tag",
 			structType: reflect.TypeOf(Tag{}),
 			expectedFields: []string{
