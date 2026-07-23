@@ -168,13 +168,22 @@ type LineStatDetail struct {
 // ErrorDescriptor carries a structured error classification for a failed
 // job step, when the API provides one.
 type ErrorDescriptor struct {
-	Type    string `json:"type,omitempty"`
-	Message string `json:"message,omitempty"`
+	ErrorType   string     `json:"error_type,omitempty"`
+	ErrorID     string     `json:"error_id,omitempty"`
+	LineNumber  *int       `json:"line_number,omitempty"`
+	Adapter     string     `json:"adapter,omitempty"`
+	ErrorAt     *time.Time `json:"error_at,omitempty"`
+	ErrorTypeID *string    `json:"error_type_id,omitempty"`
+	Actionable  bool       `json:"actionable,omitempty"`
+	Action      *string    `json:"action,omitempty"`
+	Trigger     *string    `json:"trigger,omitempty"`
 }
 
 // ErrorDetails holds the diagnostic payload for a failed step, most
 // importantly the downstream HTTP response that caused the failure.
 type ErrorDetails struct {
+	Message      string        `json:"message,omitempty"`
+	InnerMessage *string       `json:"inner_message,omitempty"`
 	HTTPResponse *HTTPResponse `json:"http_response,omitempty"`
 }
 
@@ -182,17 +191,24 @@ type ErrorDetails struct {
 // (e.g. a 401 from a called API). Headers are returned as raw JSON since
 // the key set is arbitrary.
 type HTTPResponse struct {
-	Code          int             `json:"code,omitempty"`
-	RawStatusText string          `json:"raw_status_text,omitempty"`
-	Body          string          `json:"body,omitempty"`
-	Headers       json.RawMessage `json:"headers,omitempty"`
+	Protocol             string          `json:"protocol,omitempty"`
+	Code                 int             `json:"code,omitempty"`
+	RawStatusText        string          `json:"raw_status_text,omitempty"`
+	NormalizedStatusText string          `json:"normalized_status_text,omitempty"`
+	Body                 string          `json:"body,omitempty"`
+	Headers              json.RawMessage `json:"headers,omitempty"`
 }
 
 // ErrorParts is the job-level structured error breakdown returned
 // alongside the flat error string.
 type ErrorParts struct {
-	Message string `json:"message,omitempty"`
-	Type    string `json:"type,omitempty"`
+	Message    string `json:"message,omitempty"`
+	ErrorType  string `json:"error_type,omitempty"`
+	ErrorID    string `json:"error_id,omitempty"`
+	Action     string `json:"action,omitempty"`
+	LineNumber *int   `json:"line_number,omitempty"`
+	Adapter    string `json:"adapter,omitempty"`
+	RetryCount int    `json:"retry_count,omitempty"`
 }
 
 // ListResult is a generic wrapper for paginated API responses

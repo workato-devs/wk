@@ -48,6 +48,15 @@ func TestRecipeService_GetJob(t *testing.T) {
 			"id": "j-abc123", "recipe_id": 42, "status": "failed",
 			"is_error": true, "error": "Connection timeout",
 			"handle": "j-abc123", "job_correlation_id": "corr-xyz",
+			"error_parts": {
+				"message": "No automatic OAuth refresh available, needs user re-authorization.",
+				"error_type": "Exception",
+				"error_id": "35601e00-f6c6-4c41-940e-c2be62efcfef",
+				"action": "make_request_v2",
+				"line_number": 1,
+				"adapter": "rest",
+				"retry_count": 0
+			},
 			"lines": [
 				{
 					"recipe_line_number": 1, "adapter_name": "rest", "adapter_operation": "make_request_v2",
@@ -59,6 +68,16 @@ func TestRecipeService_GetJob(t *testing.T) {
 						]
 					},
 					"error": "No automatic OAuth refresh available, needs user re-authorization.",
+					"error_descriptor": {
+						"error_type": "Exception",
+						"error_id": "35601e00-f6c6-4c41-940e-c2be62efcfef",
+						"line_number": null,
+						"adapter": "Workato",
+						"error_at": "2026-07-01T05:17:23.187-07:00",
+						"actionable": true,
+						"action": null,
+						"trigger": null
+					},
 					"error_details": {
 						"http_response": {
 							"code": 401,
@@ -133,6 +152,46 @@ func TestRecipeService_GetJob(t *testing.T) {
 	}
 	if d.Average == nil || d.Total == nil || d.Min == nil || d.Max == nil {
 		t.Errorf("detail metrics dropped: avg:%v total:%v min:%v max:%v", d.Average, d.Total, d.Min, d.Max)
+	}
+	// error_descriptor and error_parts use the API's real field names
+	// (error_type, error_id, adapter, actionable, action, trigger, line_number,
+	// retry_count) — not "type"/"message", which don't appear in either object
+	// and would silently decode both structs to their zero value.
+	if line.ErrorDescriptor == nil {
+		t.Fatalf("lines[0].error_descriptor is nil, want populated")
+	}
+	if line.ErrorDescriptor.ErrorType != "Exception" {
+		t.Errorf("error_descriptor.error_type = %q, want Exception", line.ErrorDescriptor.ErrorType)
+	}
+	if line.ErrorDescriptor.ErrorID != "35601e00-f6c6-4c41-940e-c2be62efcfef" {
+		t.Errorf("error_descriptor.error_id = %q, want 35601e00-f6c6-4c41-940e-c2be62efcfef", line.ErrorDescriptor.ErrorID)
+	}
+	if line.ErrorDescriptor.Adapter != "Workato" {
+		t.Errorf("error_descriptor.adapter = %q, want Workato", line.ErrorDescriptor.Adapter)
+	}
+	if !line.ErrorDescriptor.Actionable {
+		t.Errorf("error_descriptor.actionable = false, want true")
+	}
+	if line.ErrorDescriptor.ErrorAt == nil {
+		t.Errorf("error_descriptor.error_at is nil, want parsed timestamp")
+	}
+	if detail.ErrorParts == nil {
+		t.Fatalf("error_parts is nil, want populated")
+	}
+	if detail.ErrorParts.ErrorType != "Exception" {
+		t.Errorf("error_parts.error_type = %q, want Exception", detail.ErrorParts.ErrorType)
+	}
+	if detail.ErrorParts.ErrorID != "35601e00-f6c6-4c41-940e-c2be62efcfef" {
+		t.Errorf("error_parts.error_id = %q, want 35601e00-f6c6-4c41-940e-c2be62efcfef", detail.ErrorParts.ErrorID)
+	}
+	if detail.ErrorParts.Action != "make_request_v2" {
+		t.Errorf("error_parts.action = %q, want make_request_v2", detail.ErrorParts.Action)
+	}
+	if detail.ErrorParts.LineNumber == nil || *detail.ErrorParts.LineNumber != 1 {
+		t.Errorf("error_parts.line_number = %v, want 1", detail.ErrorParts.LineNumber)
+	}
+	if detail.ErrorParts.Adapter != "rest" {
+		t.Errorf("error_parts.adapter = %q, want rest", detail.ErrorParts.Adapter)
 	}
 }
 
