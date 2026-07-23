@@ -6,8 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [1.0.2] - 2026-07-08
 
+### Added
+
+- `wk folders update <id> --name <new>` renames a folder or project, routing to
+  `PUT /projects/{id}` or `PUT /folders/{id}` by `is_project` (mirroring
+  `delete`). `wk folders list --projects` lists projects via `GET /projects`.
+  Because a project is itself a folder (the top-level container), the list now
+  reports each project's folder `id` as its constant identity — the id
+  `update`/`delete` accept — with `project_id` as an additive field, rather than
+  surfacing `GET /projects`' `id` (the project_id) as if it were the folder id.
+  This holds for both the table (`FOLDER ID`/`PROJECT ID` columns) and `--json`,
+  so an id copied from either path routes correctly instead of hitting
+  `PUT /folders/{project_id}`. Completes coverage of the Projects & folders
+  permission. ([#91](https://github.com/workato-devs/wk/issues/91))
+- `docs/known-limitations.md` — a permission-by-permission map of `wk` CLI
+  coverage, organized to mirror the Client Role editor.
+
 ### Fixed
 
+- `wk recipes jobs get` no longer silently drops per-step diagnostics. `JobLine`
+  now carries `input`, `output`, `error`, `error_descriptor`, and
+  `error_details` (including the downstream `http_response` status/body/headers);
+  `LineStat` gains `total`/`details` and `JobDetail` gains `error_parts`/
+  `job_correlation_id`. `--json` surfaces the full payload and text output prints
+  per-step errors. ([#89](https://github.com/workato-devs/wk/issues/89))
 - `wk plugins install <name>` now works on Windows when the plugin was installed
   via Scoop. Previously, `exec.LookPath` resolved the name to Scoop's `shims\`
   directory (a launcher stub, not the plugin root), causing a "no plugin.toml

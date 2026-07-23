@@ -118,6 +118,53 @@ func TestStructFieldCoverage(t *testing.T) {
 				"root_recipe_id", "root_job_id", "master_job_id",
 				"handle", "is_repeat", "is_test", "is_test_case_job",
 				"master_job_handle", "calling_job_handle", "lines",
+				"error_parts", "job_correlation_id",
+			},
+		},
+		{
+			name:       "JobLine",
+			structType: reflect.TypeOf(JobLine{}),
+			expectedFields: []string{
+				"recipe_line_number", "adapter_name", "adapter_operation",
+				"line_stat", "input", "output", "error",
+				"error_descriptor", "error_details",
+			},
+		},
+		{
+			name:       "LineStat",
+			structType: reflect.TypeOf(LineStat{}),
+			expectedFields: []string{
+				"started_at", "completed_at", "total", "details",
+			},
+		},
+		{
+			name:       "ErrorDescriptor",
+			structType: reflect.TypeOf(ErrorDescriptor{}),
+			expectedFields: []string{
+				"error_type", "error_id", "line_number", "adapter",
+				"error_at", "error_type_id", "actionable", "action", "trigger",
+			},
+		},
+		{
+			name:       "ErrorDetails",
+			structType: reflect.TypeOf(ErrorDetails{}),
+			expectedFields: []string{
+				"message", "inner_message", "http_response",
+			},
+		},
+		{
+			name:       "HTTPResponse",
+			structType: reflect.TypeOf(HTTPResponse{}),
+			expectedFields: []string{
+				"protocol", "code", "raw_status_text", "normalized_status_text", "body", "headers",
+			},
+		},
+		{
+			name:       "ErrorParts",
+			structType: reflect.TypeOf(ErrorParts{}),
+			expectedFields: []string{
+				"message", "error_type", "error_id", "action",
+				"line_number", "adapter", "retry_count",
 			},
 		},
 		{

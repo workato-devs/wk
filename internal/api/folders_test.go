@@ -98,6 +98,83 @@ func TestFolderService_DeleteProject(t *testing.T) {
 	}
 }
 
+func TestFolderService_Update(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "PUT" {
+			t.Errorf("method = %s, want PUT", r.Method)
+		}
+		if r.URL.Path != "/folders/7" {
+			t.Errorf("path = %s, want /folders/7", r.URL.Path)
+		}
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["name"] != "renamed" {
+			t.Errorf("name = %v, want renamed", body["name"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(Folder{ID: 7, Name: "renamed"})
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	folder, err := client.Folders().Update(context.Background(), 7, "renamed")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if folder.Name != "renamed" {
+		t.Errorf("name = %q, want renamed", folder.Name)
+	}
+}
+
+// TestFolderService_UpdateProject pins the separate PUT /projects/{id}
+// endpoint that projects (is_project=true) require — mirroring
+// DeleteProject. A project update must not route through /folders/.
+func TestFolderService_UpdateProject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "PUT" {
+			t.Errorf("method = %s, want PUT", r.Method)
+		}
+		if r.URL.Path != "/projects/9" {
+			t.Errorf("path = %s, want /projects/9 (project update must not route through /folders/)", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(Folder{ID: 3, Name: "renamed", IsProject: true, ProjectID: 9})
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	folder, err := client.Folders().UpdateProject(context.Background(), 9, "renamed")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if folder.Name != "renamed" {
+		t.Errorf("name = %q, want renamed", folder.Name)
+	}
+}
+
+func TestFolderService_ListProjects(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("method = %s, want GET", r.Method)
+		}
+		if r.URL.Path != "/projects" {
+			t.Errorf("path = %s, want /projects", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]Folder{{ID: 1, Name: "Proj", IsProject: true, ProjectID: 42}})
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	projects, err := client.Folders().ListProjects(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(projects) != 1 || projects[0].Name != "Proj" {
+		t.Errorf("got %+v, want 1 project named Proj", projects)
+	}
+}
+
 // TestFolder_DeserializesIsProjectAndProjectID ensures the list response
 // captures is_project AND the distinct project_id — folders-delete
 // routing depends on both: is_project picks the endpoint,

@@ -34,6 +34,18 @@ func (m *mockFolderService) DeleteProject(_ context.Context, _ int) error {
 	return nil
 }
 
+func (m *mockFolderService) ListProjects(_ context.Context) ([]api.Folder, error) {
+	return nil, nil
+}
+
+func (m *mockFolderService) Update(_ context.Context, _ int, _ string) (*api.Folder, error) {
+	return nil, nil
+}
+
+func (m *mockFolderService) UpdateProject(_ context.Context, _ int, _ string) (*api.Folder, error) {
+	return nil, nil
+}
+
 func newTestEngine(folders map[int][]api.Folder) *SyncEngine {
 	return &SyncEngine{
 		folders: &mockFolderService{folders: folders},
