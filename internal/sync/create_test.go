@@ -59,6 +59,10 @@ func (m *createMockFolders) Create(_ context.Context, name string, parentID *int
 	return &folder, nil
 }
 
+func (m *createMockFolders) Move(_ context.Context, _ int, _ int) (*api.Folder, error) {
+	return nil, nil
+}
+
 func (m *createMockFolders) Delete(_ context.Context, _ int) error {
 	return nil
 }

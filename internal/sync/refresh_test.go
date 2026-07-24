@@ -36,6 +36,10 @@ func (m *refreshMockFolders) Create(_ context.Context, _ string, _ *int) (*api.F
 	return nil, nil
 }
 
+func (m *refreshMockFolders) Move(_ context.Context, _ int, _ int) (*api.Folder, error) {
+	return nil, nil
+}
+
 func (m *refreshMockFolders) Delete(_ context.Context, _ int) error {
 	return nil
 }

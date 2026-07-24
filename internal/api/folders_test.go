@@ -77,6 +77,41 @@ func TestFolderService_Delete(t *testing.T) {
 	}
 }
 
+// TestFolderService_Move pins that Move sends parent_id (not name) to
+// PUT /folders/{id}. This proves the same endpoint that could rename a
+// folder can also relocate it, and that Move sends only the field it
+// needs.
+func TestFolderService_Move(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "PUT" {
+			t.Errorf("method = %s, want PUT", r.Method)
+		}
+		if r.URL.Path != "/folders/7" {
+			t.Errorf("path = %s, want /folders/7", r.URL.Path)
+		}
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		if _, hasName := body["name"]; hasName {
+			t.Errorf("body has name = %v, want Move to send parent_id only, not name", body["name"])
+		}
+		if pid, ok := body["parent_id"].(float64); !ok || int(pid) != 12 {
+			t.Errorf("parent_id = %v, want 12", body["parent_id"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(Folder{ID: 7, Name: "child", ParentID: intPtr(12)})
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	folder, err := client.Folders().Move(context.Background(), 7, 12)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if folder.ParentID == nil || *folder.ParentID != 12 {
+		t.Errorf("parent_id = %v, want 12", folder.ParentID)
+	}
+}
+
 // TestFolderService_DeleteProject pins the separate endpoint that
 // projects (top-level, is_project=true) require. DELETE /folders/{id}
 // does not work for projects; DeleteProject routes to /projects/{id}.

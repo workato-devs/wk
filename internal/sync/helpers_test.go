@@ -26,6 +26,10 @@ func (m *mockFolderService) Create(_ context.Context, _ string, _ *int) (*api.Fo
 	return nil, nil
 }
 
+func (m *mockFolderService) Move(_ context.Context, _ int, _ int) (*api.Folder, error) {
+	return nil, nil
+}
+
 func (m *mockFolderService) Delete(_ context.Context, _ int) error {
 	return nil
 }

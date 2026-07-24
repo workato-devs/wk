@@ -58,6 +58,7 @@ type ConnectionListOptions struct {
 type FolderService interface {
 	List(ctx context.Context, parentID *int) ([]Folder, error)
 	Create(ctx context.Context, name string, parentID *int) (*Folder, error)
+	Move(ctx context.Context, id int, parentID int) (*Folder, error)
 	Delete(ctx context.Context, id int) error
 	DeleteProject(ctx context.Context, id int) error
 }

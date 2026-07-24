@@ -18,6 +18,7 @@ func newFoldersCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newFoldersListCmd())
 	cmd.AddCommand(newFoldersCreateCmd())
+	cmd.AddCommand(newFoldersMoveCmd())
 	cmd.AddCommand(newFoldersDeleteCmd())
 	return cmd
 }
@@ -114,6 +115,65 @@ func newFoldersCreateCmd() *cobra.Command {
 	}
 
 	cmd.Flags().IntVar(&parentID, "parent", 0, "Parent folder ID")
+	return cmd
+}
+
+func newFoldersMoveCmd() *cobra.Command {
+	var parentID int
+
+	cmd := &cobra.Command{
+		Use:     "move <id>",
+		Short:   "Move a folder to a different parent",
+		Example: `  wk folders move 123 --parent 456`,
+		Long: `Move a nested folder to a different parent via PUT /folders/{id}.
+
+This is a separate command rather than a flag on an update-style command,
+mirroring "wk recipes move": a structural change should never happen as a
+side effect of something else. Only plain folders are supported;
+top-level projects cannot be moved this way.`,
+		Args: requireArgs(1, "folder ID is required, e.g.: wk folders move <id> --parent <id>"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rctx, err := BuildRunContext(cmd)
+			if err != nil {
+				return err
+			}
+			client, _, err := resolveAPIClient(cmd)
+			if err != nil {
+				return err
+			}
+
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid folder ID: %s", args[0])
+			}
+
+			// Projects are always top-level and Move only supports plain
+			// folders (mirroring Delete's is_project routing check).
+			topLevel, err := client.Folders().List(cmd.Context(), nil)
+			if err != nil {
+				return fmt.Errorf("listing top-level folders to determine type: %w", err)
+			}
+			for i := range topLevel {
+				if topLevel[i].ID == id && topLevel[i].IsProject {
+					return fmt.Errorf("folder %d is a top-level project; moving projects is not supported", id)
+				}
+			}
+
+			moved, err := client.Folders().Move(cmd.Context(), id, parentID)
+			if err != nil {
+				return err
+			}
+
+			if flagJSON {
+				return rctx.Formatter.Format(os.Stdout, moved)
+			}
+			fmt.Fprintf(os.Stderr, "Moved folder %d to parent %d\n", id, parentID)
+			return nil
+		},
+	}
+
+	cmd.Flags().IntVar(&parentID, "parent", 0, "Target parent folder ID (required)")
+	_ = cmd.MarkFlagRequired("parent")
 	return cmd
 }
 
