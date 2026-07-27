@@ -1,10 +1,14 @@
 # ADR-003: MCP Strategy — No Auto-Delegation, Protocol-Level Tooling Only
 
 **Author(s):** Zayne Turner
+**Amended-by:** Claude [role: assistant; harness: Claude Code; model: Sonnet 5], dir. Zayne Turner — July 2026
 **Status:** Accepted
 **Date:** March 3, 2026
 **Deciders:** DevRel Engineering
 **References:** ADR-001 (Foundational Architecture), PRD Section "MCP Integration Strategy"
+
+**Amendments:**
+- July 2026 — Platform shipped `mcp_servers` management API; `wk mcp servers` CRUD/token-renew built. Token-retrieval regression for `hashed_token`/`*.apim.mcp.*` servers (issue #76) reported fixed by the platform team.
 
 ---
 
@@ -67,6 +71,9 @@ All returned 404. The MCP server abstraction is a UI-layer construct built on th
 
 Without MCP management API endpoints from the core platform team, the CLI cannot programmatically create, list, update, or delete MCP servers.
 
+> **Amendment (July 2026): the platform shipped `mcp_servers` management endpoints; this section is historical.**
+> The core platform team added `GET/POST/PUT/DELETE /api/mcp/mcp_servers/...` (list, get, create, update, delete, plus `token_renew`, `server_policies`, `assign_tools`, and user-group grants for identity-based servers). `wk mcp servers` now wraps the full lifecycle — see `internal/api/mcp_servers.go` and `internal/commands/mcp_servers.go` — closing the gap this section describes. Issue #76 additionally flagged a platform-side regression where `token_renew` stopped returning the token in `mcp_url` for `auth_type: hashed_token` / `*.apim.mcp.*` servers; the platform team has since reported that fixed. The CLI itself needed no change for the regression (it only relays whatever `mcp_url` the API returns) — this note exists so the historical "UI-only" claim above isn't mistaken for current fact. `wk mcp url`/CRUD are no longer "Deferred" (see updated status below).
+
 ---
 
 ## What We're Building
@@ -89,6 +96,9 @@ Both commands accept any MCP URL as a positional argument — they don't depend 
 
 The PRD proposed `wk mcp url <id-or-name>` to print the MCP URL for a server. This requires the MCP management API to look up servers by name. Deferred until that API exists.
 
+> **Amendment (July 2026): superseded by `wk mcp servers get <handle>`.**
+> That lookup API now exists; `wk mcp servers get <handle>` prints `MCP URL: ...` (and `--json` includes `mcp_url`), covering the need this section deferred. No dedicated `wk mcp url` alias was added since `get` already serves the purpose.
+
 ---
 
 ## What We're Cutting
@@ -103,6 +113,9 @@ The PRD proposed `wk mcp url <id-or-name>` to print the MCP URL for a server. Th
 | `wk mcp create` | **Blocked** | No create endpoint; `wkt_token` generation is UI-only |
 | `wk mcp update <id>` | **Blocked** | No update endpoint exists |
 | `wk mcp delete <id>` | **Blocked** | No delete endpoint exists |
+
+> **Amendment (July 2026): the "Blocked" rows above are resolved.**
+> The platform shipped the `mcp_servers` management API; all five rows now ship as `wk mcp servers list/get/create/update/delete` (plus `token-renew`, `policies`, `tools`, and `user-groups` beyond the original PRD scope). The `auto_delegate`/`prefer_mcp_for`/`never_delegate` rows are unaffected — that architectural rejection stands.
 
 ### What Stays in `wk.toml`
 
@@ -151,11 +164,17 @@ server_url = ""                   # parsed but not acted on
 - **MCP server management**: Developers must use the AI Hub UI to create and manage Collection MCP servers. There is no CLI-first workflow for this today.
 - **CI/CD MCP provisioning**: Pipelines cannot programmatically create MCP servers. This blocks fully automated MCP-enabled deployment workflows.
 
+> **Amendment (July 2026): both points resolved.**
+> `wk mcp servers create/update/delete` (plus `create-batch`) now cover CLI- and CI/CD-driven MCP server lifecycle management; see `internal/commands/mcp_servers.go`.
+
 ### What We'll Need to Revisit
 
 - **When Workato ships MCP management API endpoints**: Implement `wk mcp list/get/create/update/delete` commands. The types (`MCPServerInfo`, `MCPTool`) and MCP client (`internal/mcp/client.go`) are already in place.
 - **If the MCP server gains capabilities beyond passthrough**: Re-evaluate delegation. If a future MCP server version adds composite operations, validation, or enriched responses, the `auto_delegate` concept may become worth building. The `[mcp]` config section is already in the schema.
 - **`wkt_token` programmatic access**: The single biggest blocker for MCP management is that the `wkt_token` (Collection MCP auth) is only generated through the UI. If this becomes API-accessible, MCP CRUD becomes unblocked even without dedicated MCP management endpoints.
+
+> **Amendment (July 2026): first and third bullets done; token-renew regression closed out.**
+> The platform shipped `mcp_servers` management endpoints (first bullet — done). Token programmatic access (third bullet) arrived via `token_renew`; issue #76 tracked a follow-on platform-side regression where `token_renew` stopped returning the token in `mcp_url` for `auth_type: hashed_token` / `*.apim.mcp.*` servers specifically — the platform team has since reported that fixed. The delegation re-evaluation bullet is untouched; still no evidence the MCP server offers more than passthrough.
 
 ---
 
@@ -173,6 +192,9 @@ DELETE /api/mcp_servers/{id}         → delete MCP server
 
 Without these, developers are forced into the AI Hub UI for MCP server management — an unacceptable end-state for a CLI-first workflow. This is a negotiation with core product, not a CLI engineering problem.
 
+> **Amendment (July 2026): request fulfilled.**
+> The core platform team shipped these endpoints (under `/api/mcp/mcp_servers/...`, not the originally guessed `/api/mcp_servers/...` shape) — see the "What We're Building" amendment above.
+
 ---
 
 ## Action Items
@@ -181,6 +203,6 @@ Without these, developers are forced into the AI Hub UI for MCP server managemen
 2. [x] Implement `wk mcp test` with Streamable HTTP transport
 3. [x] Implement `wk mcp tools` with initialize + tools/list flow
 4. [x] Write unit tests for MCP client (SSE + JSON response handling)
-5. [ ] File internal request for MCP management API endpoints with core platform team
-6. [ ] When MCP management API ships: implement `wk mcp list/get/create/update/delete`
+5. [x] File internal request for MCP management API endpoints with core platform team
+6. [x] When MCP management API ships: implement `wk mcp list/get/create/update/delete` (shipped as `wk mcp servers ...`, July 2026)
 7. [ ] Update ADR-001 Forward References to mark ADR-003 as Accepted

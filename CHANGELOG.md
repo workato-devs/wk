@@ -22,6 +22,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `docs/known-limitations.md` — a permission-by-permission map of `wk` CLI
   coverage, organized to mirror the Client Role editor.
 
+### Changed
+
+- `docs/command-reference.md` brought back to parity with the actual command
+  tree. It was missing `mcp servers` entirely (create/update/delete/
+  create-batch/get/list/token-renew/tools/policies/user-groups), `api clients`
+  and `api clients keys`, `agentic skills`, `workspace properties`,
+  `sync discover`, `recipes jobs get`/`retry`, `folders update`, and
+  `auth token`. Added a **Command reference check** item to the PR template so
+  command/flag surface changes come with a docs update in the same PR.
+- ADR-003 (MCP Strategy) amended: the platform shipped the `mcp_servers`
+  management API assumed unavailable when the ADR was written, so `wk mcp
+  servers` now covers the full CRUD/token-renew/policies/tools/user-groups
+  lifecycle the ADR had marked "Blocked". Also notes that the `token_renew`
+  regression for `auth_type: hashed_token` / `*.apim.mcp.*` servers flagged in
+  [#76](https://github.com/workato-devs/wk/issues/76) (token missing from
+  `mcp_url`) has been reported fixed by the platform team; no CLI change was
+  needed since `wk` only relays whatever `mcp_url` the API returns.
+
+### Changed
+
+- `docs/command-reference.md` brought back to parity with the actual command
+  tree. It was missing `mcp servers` entirely (create/update/delete/
+  create-batch/get/list/token-renew/tools/policies/user-groups), `api clients`
+  and `api clients keys`, `agentic skills`, `workspace properties`,
+  `sync discover`, `recipes jobs get`/`retry`, `folders update`, and
+  `auth token`. Added a **Command reference check** item to the PR template so
+  command/flag surface changes come with a docs update in the same PR.
+
 ### Fixed
 
 - `wk recipes jobs get` no longer silently drops per-step diagnostics. `JobLine`
