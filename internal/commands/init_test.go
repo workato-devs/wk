@@ -17,9 +17,11 @@ import (
 func setupTestHome(t *testing.T) func() {
 	t.Helper()
 	origHome := os.Getenv("HOME")
+	origUserProfile := os.Getenv("USERPROFILE")
 
 	tmpHome := t.TempDir()
 	os.Setenv("HOME", tmpHome)
+	os.Setenv("USERPROFILE", tmpHome) // Required on Windows where os.UserHomeDir reads USERPROFILE
 
 	wkDir := filepath.Join(tmpHome, ".wk")
 	os.MkdirAll(wkDir, 0700)
@@ -42,6 +44,7 @@ func setupTestHome(t *testing.T) func() {
 
 	return func() {
 		os.Setenv("HOME", origHome)
+		os.Setenv("USERPROFILE", origUserProfile)
 	}
 }
 
