@@ -64,6 +64,20 @@ func (h *PluginHost) Load(pluginDir string) error {
 
 // Execute routes an RPC call to the named plugin.
 func (h *PluginHost) Execute(pluginName, method string, params any) (json.RawMessage, error) {
+	return h.execute(pluginName, method, params, true)
+}
+
+// Render calls a plugin's presentation-only renderer without displaying a
+// second progress spinner for the same user command.
+func (h *PluginHost) Render(pluginName, method string, params RenderRequest) (string, error) {
+	result, err := h.execute(pluginName, method, params, false)
+	if err != nil {
+		return "", err
+	}
+	return DecodeRenderResponse(result)
+}
+
+func (h *PluginHost) execute(pluginName, method string, params any, showSpinner bool) (json.RawMessage, error) {
 	h.mu.RLock()
 	p, ok := h.plugins[pluginName]
 	h.mu.RUnlock()
@@ -72,9 +86,11 @@ func (h *PluginHost) Execute(pluginName, method string, params any) (json.RawMes
 		return nil, fmt.Errorf("plugin %q is not loaded", pluginName)
 	}
 
-	sp := term.NewSpinner(fmt.Sprintf("Running %s/%s", pluginName, method))
-	sp.Start()
-	defer sp.Stop()
+	if showSpinner {
+		sp := term.NewSpinner(fmt.Sprintf("Running %s/%s", pluginName, method))
+		sp.Start()
+		defer sp.Stop()
+	}
 
 	return p.Client.Call(method, params)
 }

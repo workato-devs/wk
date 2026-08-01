@@ -229,8 +229,9 @@ func hasCommand(root *cobra.Command, name string) bool {
 // makePluginRunE can build a structured params object instead of sending a raw
 // string array.
 type pluginCmdDef struct {
-	Args  []plugin.Arg
-	Flags []plugin.Flag
+	Renderer string
+	Args     []plugin.Arg
+	Flags    []plugin.Flag
 }
 
 // makePluginRunE creates a RunE function that loads a plugin and calls a method.
@@ -253,7 +254,19 @@ func makePluginRunE(pluginDir, method string, def *pluginCmdDef) func(*cobra.Com
 
 		params := buildPluginParams(cmd, args, def)
 
-		result, err := host.Execute(m.Name, method, params)
+		renderer := ""
+		if def != nil {
+			renderer = def.Renderer
+		}
+		execution, err := executePluginMethod(
+			host,
+			m.Name,
+			method,
+			renderer,
+			params,
+			plugin.RenderContext{Format: plugin.RenderFormatText, CommandPath: cmd.CommandPath()},
+			!flagJSON,
+		)
 		if err != nil {
 			return err
 		}
@@ -263,21 +276,16 @@ func makePluginRunE(pluginDir, method string, def *pluginCmdDef) func(*cobra.Com
 			if err != nil {
 				return err
 			}
-			if err := rctx.Formatter.Format(os.Stdout, json.RawMessage(result)); err != nil {
+			if err := rctx.Formatter.Format(os.Stdout, execution.Result); err != nil {
 				return err
 			}
 		} else {
-			var m2 map[string]any
-			if json.Unmarshal(result, &m2) == nil {
-				for k, v := range m2 {
-					fmt.Fprintf(os.Stdout, "%s: %v\n", k, v)
-				}
-			} else {
-				fmt.Fprintf(os.Stdout, "%s\n", string(result))
+			if err := writePluginTextResult(os.Stdout, os.Stderr, execution); err != nil {
+				return err
 			}
 		}
 
-		return exitCodeFromResult(result)
+		return exitCodeFromResult(execution.Result)
 	}
 }
 
@@ -371,13 +379,13 @@ func registerPluginCommands(root *cobra.Command) {
 			}
 
 			if pcmd.Method != "" {
-				def := &pluginCmdDef{Args: pcmd.Args, Flags: pcmd.Flags}
+				def := &pluginCmdDef{Renderer: pcmd.Renderer, Args: pcmd.Args, Flags: pcmd.Flags}
 				cmd.RunE = makePluginRunE(p.Dir, pcmd.Method, def)
 				registerPluginFlags(cmd, pcmd.Flags)
 			}
 
 			for _, sub := range pcmd.Subcommands {
-				def := &pluginCmdDef{Args: sub.Args, Flags: sub.Flags}
+				def := &pluginCmdDef{Renderer: sub.Renderer, Args: sub.Args, Flags: sub.Flags}
 				child := &cobra.Command{
 					Use:   sub.Name,
 					Short: sub.Description,

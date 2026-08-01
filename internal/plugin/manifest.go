@@ -27,6 +27,7 @@ type Command struct {
 	Name        string       `toml:"name"`
 	Description string       `toml:"description"`
 	Method      string       `toml:"method,omitempty"`
+	Renderer    string       `toml:"renderer,omitempty"`
 	Args        []Arg        `toml:"args,omitempty"`
 	Flags       []Flag       `toml:"flags,omitempty"`
 	Subcommands []Subcommand `toml:"subcommands,omitempty"`
@@ -37,8 +38,26 @@ type Subcommand struct {
 	Name        string `toml:"name"`
 	Description string `toml:"description"`
 	Method      string `toml:"method"`
+	Renderer    string `toml:"renderer,omitempty"`
 	Args        []Arg  `toml:"args,omitempty"`
 	Flags       []Flag `toml:"flags,omitempty"`
+}
+
+// RendererForMethod returns the optional text renderer declared for method.
+// It is primarily used by built-in aliases that delegate to a plugin method
+// without being registered from the plugin's command declaration.
+func (m *Manifest) RendererForMethod(method string) string {
+	for _, command := range m.Commands {
+		if command.Method == method {
+			return command.Renderer
+		}
+		for _, subcommand := range command.Subcommands {
+			if subcommand.Method == method {
+				return subcommand.Renderer
+			}
+		}
+	}
+	return ""
 }
 
 // Arg describes a positional argument for a command or subcommand.

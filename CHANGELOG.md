@@ -28,6 +28,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ([#97](https://github.com/workato-devs/wk/issues/97))
 - `docs/known-limitations.md` — a permission-by-permission map of `wk` CLI
   coverage, organized to mirror the Client Role editor.
+- Plugin commands and subcommands may declare an optional `renderer` JSON-RPC
+  method for human-readable output. Text mode passes the canonical command
+  result to the renderer in the same plugin process; `--json` continues to emit
+  the primary result without invoking the renderer. ([#90](https://github.com/workato-devs/wk/issues/90))
 
 ### Changed
 
@@ -55,6 +59,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `LineStat` gains `total`/`details` and `JobDetail` gains `error_parts`/
   `job_correlation_id`. `--json` surfaces the full payload and text output prints
   per-step errors. ([#89](https://github.com/workato-devs/wk/issues/89))
+- Plugin commands without a renderer now fall back to deterministic indented
+  JSON instead of exposing nested values as Go `map[...]` syntax. Renderer
+  failures warn and use the same fallback without changing the primary command
+  result or exit code. ([#90](https://github.com/workato-devs/wk/issues/90))
 
 ## [1.0.2] - 2026-07-08
 

@@ -26,6 +26,19 @@ type rpcError struct {
 	Message string `json:"message"`
 }
 
+type helloResult struct {
+	Message string `json:"message"`
+	Version string `json:"version"`
+}
+
+type renderRequest struct {
+	Result  helloResult `json:"result"`
+	Context struct {
+		Format      string `json:"format"`
+		CommandPath string `json:"command_path"`
+	} `json:"context"`
+}
+
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	encoder := json.NewEncoder(os.Stdout)
@@ -57,9 +70,29 @@ func main() {
 		case "example.hello":
 			resp := rpcResponse{
 				JSONRPC: "2.0",
+				Result: helloResult{
+					Message: "Hello from the example plugin!",
+					Version: "0.1.0",
+				},
+				ID: req.ID,
+			}
+			encoder.Encode(resp)
+
+		case "example.render":
+			var params renderRequest
+			if err := json.Unmarshal(req.Params, &params); err != nil || params.Result.Message == "" {
+				resp := rpcResponse{
+					JSONRPC: "2.0",
+					Error:   rpcError{Code: -32602, Message: "Invalid renderer params"},
+					ID:      req.ID,
+				}
+				encoder.Encode(resp)
+				continue
+			}
+			resp := rpcResponse{
+				JSONRPC: "2.0",
 				Result: map[string]string{
-					"message": "Hello from the example plugin!",
-					"version": "0.1.0",
+					"text": fmt.Sprintf("%s\nPlugin version: %s", params.Result.Message, params.Result.Version),
 				},
 				ID: req.ID,
 			}

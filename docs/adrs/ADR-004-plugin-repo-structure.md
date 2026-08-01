@@ -1,7 +1,7 @@
 # ADR-004: Plugin Repo Structure — Separate Repos, Not a Monorepo
 
 **Author(s):** Zayne Turner
-**Amended-by:** Claude [role: assistant; harness: Claude Code; model: Opus 4.8], dir. Zayne Turner — June 2026; Kiro [role: assistant; harness: Kiro; model: Claude Sonnet 4.6], dir. Chris Miller — July 2026
+**Amended-by:** Claude [role: assistant; harness: Claude Code; model: Opus 4.8], dir. Zayne Turner — June 2026; Kiro [role: assistant; harness: Kiro; model: Claude Sonnet 4.6], dir. Chris Miller — July 2026; Codex [role: assistant; harness: Codex; model: GPT-5], dir. Zayne Turner — July 2026
 **Status:** Accepted
 **Date:** March 3, 2026
 **Deciders:** DevRel Engineering
@@ -11,6 +11,7 @@
 
 - June 2026 — Repos renamed for public launch: `wk-cli-beta` → `wk`, `wk-lint-beta` → `recipe-lint`. Original names retained in the body below as the historical record.
 - July 2026 — Windows/Scoop install path resolution hardened; `plugin.toml` discovery now walks up parent directories. See amendment after Decision 3.
+- July 2026 — Commands may declare an optional plugin-owned text renderer. The primary result remains canonical; `wk` owns output mode, fallback, and exit status. See amendment after Decision 5.
 
 ---
 
@@ -104,6 +105,7 @@ pre-push = "lint.pre_push"
 name = "lint"
 description = "Lint Workato recipe JSON files"
 method = "lint.run"
+renderer = "lint.render"
 ```
 
 **Why TOML:** Matches `wk.toml` for the CLI config (ADR-001 Decision 2). Developers working in the `wk` ecosystem encounter one config format.
@@ -120,6 +122,7 @@ method = "lint.run"
 | `hooks.post-pull`      | string | Reserved, not dispatched yet.                                                        |
 | `commands`             | array  | Commands the plugin registers on the CLI (name, description, method).                |
 | `commands.subcommands` | array  | Nested subcommands under a plugin command (name, description, method, args).         |
+| `commands.renderer`    | string | Optional JSON-RPC method that renders the command result as human-readable text.     |
 
 **Implementation:** `internal/plugin/manifest.go` — `Manifest` struct parsed via `go-toml/v2`. `LoadManifest()` reads and unmarshals the TOML file.
 
@@ -212,6 +215,41 @@ Plugin writes to stdout:     {"jsonrpc":"2.0","result":{...},"id":1}\n
 **Subcommand support:** Commands can have nested subcommands with their own methods and argument definitions. The `Subcommand` struct includes `Args` for positional argument metadata.
 
 **Implementation:** `internal/plugin/manifest.go` — `Command` and `Subcommand` structs. `internal/commands/plugin.go` — `wk plugins install|list|remove` management commands.
+
+> **Amendment (July 2026): plugin-owned text renderers.**
+> The original implementation left “formats and prints the result” undefined.
+> Generic Go formatting exposed nested JSON values as implementation-specific
+> `map[...]` output and could not express domain-aware presentation without
+> coupling `wk` to individual plugins. A command or subcommand may now declare
+> an optional `renderer` JSON-RPC method in `plugin.toml`.
+>
+> The primary command method remains the canonical operation. For JSON output,
+> `wk` emits its structured result unchanged and does not call the renderer. For
+> human-readable output, `wk` may make a second call in the same plugin process:
+>
+> ```json
+> {
+>   "jsonrpc": "2.0",
+>   "method": "lint.render",
+>   "params": {
+>     "result": { "exit_code": 0, "files": [] },
+>     "context": { "format": "text", "command_path": "wk lint" }
+>   },
+>   "id": 2
+> }
+> ```
+>
+> The renderer returns `{ "text": "..." }` and is presentation-only: it must
+> consume the supplied result rather than rerun the operation, and it cannot
+> change the process exit status. `wk` owns selection of output mode, writes to
+> stdout/stderr, and derives the exit code only from the primary result. If no
+> renderer is declared, `wk` prints deterministic indented JSON. If a renderer
+> fails or returns a malformed response, `wk` warns on stderr, uses the same
+> fallback, and preserves the primary result and exit code. Context fields are
+> additive; renderers must ignore fields they do not recognize. The optional
+> manifest field is itself additive: plugins must keep all canonical data in
+> the primary result and remain correct when a renderer is not called, whether
+> because the caller requested JSON or an older `wk` host ignored the field.
 
 ### Decision 6: wk-lint-beta Internal Architecture
 
