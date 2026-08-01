@@ -54,7 +54,7 @@ func (s *packageService) ExportStatus(ctx context.Context, packageID int) (*Pack
 }
 
 func (s *packageService) Download(ctx context.Context, packageID int) ([]byte, error) {
-	return s.client.doRaw(ctx, "GET", fmt.Sprintf("/packages/%d/download", packageID))
+	return s.client.doRaw(ctx, "GET", fmt.Sprintf("/packages/%d/download", packageID), nil)
 }
 
 func (s *packageService) Import(ctx context.Context, folderID int, data []byte, restartRecipes bool) (int, error) {

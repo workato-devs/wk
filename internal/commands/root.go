@@ -176,6 +176,14 @@ func classifyError(err error) int {
 		return wkerrors.ExitPlugin
 
 	default:
+		var actErr *api.ActivationError
+		if errors.As(err, &actErr) {
+			return wkerrors.ExitValidation
+		}
+		var refErr *api.MutationRefusedError
+		if errors.As(err, &refErr) {
+			return wkerrors.ExitValidation
+		}
 		return wkerrors.ExitGeneral
 	}
 }

@@ -229,14 +229,26 @@ func (c *HTTPClient) do(ctx context.Context, method, path string, body, result a
 }
 
 // doRaw executes an HTTP request and returns the raw response body.
-func (c *HTTPClient) doRaw(ctx context.Context, method, path string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, nil)
+func (c *HTTPClient) doRaw(ctx context.Context, method, path string, body any) ([]byte, error) {
+	var bodyReader io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("encoding request body: %w", err)
+		}
+		bodyReader = bytes.NewReader(data)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("User-Agent", version.UserAgent())
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	if c.verbose {
 		fmt.Fprintf(os.Stderr, "[debug] %s %s%s\n", method, c.baseURL, path)

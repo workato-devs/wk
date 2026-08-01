@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"sort"
 	"strconv"
+	"strings"
 )
 
 type recipeService struct {
@@ -51,7 +53,11 @@ func (s *recipeService) Get(ctx context.Context, id int) (*Recipe, error) {
 }
 
 func (s *recipeService) Start(ctx context.Context, id int) error {
-	return s.client.do(ctx, "PUT", fmt.Sprintf("/recipes/%d/start", id), nil, nil)
+	body, err := s.client.doRaw(ctx, "PUT", fmt.Sprintf("/recipes/%d/start", id), nil)
+	if err != nil {
+		return err
+	}
+	return parseActivationError(id, body)
 }
 
 func (s *recipeService) Stop(ctx context.Context, id int) error {
@@ -59,7 +65,7 @@ func (s *recipeService) Stop(ctx context.Context, id int) error {
 }
 
 func (s *recipeService) Export(ctx context.Context, id int) ([]byte, error) {
-	return s.client.doRaw(ctx, "GET", fmt.Sprintf("/recipes/%d", id))
+	return s.client.doRaw(ctx, "GET", fmt.Sprintf("/recipes/%d", id), nil)
 }
 
 func (s *recipeService) Import(ctx context.Context, folderID int, data []byte) (*Recipe, error) {
@@ -91,13 +97,22 @@ func (s *recipeService) Update(ctx context.Context, id int, data []byte) error {
 	// folder_id is meaningful only on create; drop it so callers can reuse
 	// their export JSON without accidentally moving the recipe.
 	delete(body, "folder_id")
-	return s.client.do(ctx, "PUT", fmt.Sprintf("/recipes/%d", id), body, nil)
+	resp, err := s.client.doRaw(ctx, "PUT", fmt.Sprintf("/recipes/%d", id), body)
+	if err != nil {
+		return err
+	}
+	return parseMutationRefusal(fmt.Sprintf("updating recipe %d", id), resp)
 }
 
-// Delete removes a recipe via DELETE /recipes/{id}. The API returns 204
-// on success; s.client.do already treats 2xx as OK.
+// Delete removes a recipe via DELETE /recipes/{id}. The endpoint returns
+// HTTP 200 for both outcomes; a refusal (e.g. the recipe is running)
+// carries success:false in the body.
 func (s *recipeService) Delete(ctx context.Context, id int) error {
-	return s.client.do(ctx, "DELETE", fmt.Sprintf("/recipes/%d", id), nil, nil)
+	resp, err := s.client.doRaw(ctx, "DELETE", fmt.Sprintf("/recipes/%d", id), nil)
+	if err != nil {
+		return err
+	}
+	return parseMutationRefusal(fmt.Sprintf("deleting recipe %d", id), resp)
 }
 
 // Move changes a recipe's folder via PUT /recipes/{id} with an explicit
@@ -116,7 +131,11 @@ func (s *recipeService) Move(ctx context.Context, id, folderID int) error {
 		return err
 	}
 	body["folder_id"] = strconv.Itoa(folderID)
-	return s.client.do(ctx, "PUT", fmt.Sprintf("/recipes/%d", id), body, nil)
+	resp, err := s.client.doRaw(ctx, "PUT", fmt.Sprintf("/recipes/%d", id), body)
+	if err != nil {
+		return err
+	}
+	return parseMutationRefusal(fmt.Sprintf("moving recipe %d", id), resp)
 }
 
 // CanonicalizeRecipeExport converts the raw GET /recipes/{id} response into
@@ -430,4 +449,156 @@ func (s *recipeService) RepeatJobs(ctx context.Context, recipeID int, jobIDs []s
 		return nil, err
 	}
 	return &result, nil
+}
+
+// ActivationError reports why the platform refused to activate a recipe.
+// PUT /recipes/{id}/start returns HTTP 200 with success:false and a
+// code_errors payload when activation is blocked; see the fixtures in
+// recipes_test.go for recorded shapes.
+type ActivationError struct {
+	RecipeID     int
+	CodeErrors   []StepCodeErrors
+	ConfigErrors []StepCodeErrors
+}
+
+// StepCodeErrors groups activation errors for one recipe step (by step number).
+type StepCodeErrors struct {
+	Step    int
+	Details []FieldCodeError
+}
+
+// FieldCodeError is one field-level activation error within a step.
+type FieldCodeError struct {
+	Label   string
+	Value   any
+	Message string
+	Path    string
+}
+
+func (e *ActivationError) Error() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "recipe %d cannot activate: the platform reported step errors", e.RecipeID)
+	for _, step := range append(append([]StepCodeErrors{}, e.CodeErrors...), e.ConfigErrors...) {
+		for _, d := range step.Details {
+			fmt.Fprintf(&b, "\n  step %d: %s %s", step.Step, d.Label, d.Message)
+			if d.Path != "" {
+				fmt.Fprintf(&b, " (%s)", d.Path)
+			}
+		}
+	}
+	return b.String()
+}
+
+// startResponse is the (undocumented) body of PUT /recipes/{id}/start. The
+// endpoint returns HTTP 200 for both outcomes; success:false carries the
+// activation errors that the recipe editor shows as inline step annotations.
+type startResponse struct {
+	Success      bool             `json:"success"`
+	CodeErrors   []StepCodeErrors `json:"code_errors"`
+	ConfigErrors []StepCodeErrors `json:"config_errors"`
+}
+
+// UnmarshalJSON decodes the positional pair [step_number, [field errors]].
+func (s *StepCodeErrors) UnmarshalJSON(data []byte) error {
+	var raw []json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if len(raw) < 2 {
+		return fmt.Errorf("code_errors entry: want [step, details], got %d elements", len(raw))
+	}
+	if err := json.Unmarshal(raw[0], &s.Step); err != nil {
+		return fmt.Errorf("code_errors step number: %w", err)
+	}
+	return json.Unmarshal(raw[1], &s.Details)
+}
+
+// UnmarshalJSON decodes the positional tuple [label, current_value, message]
+// with an optional fourth path element. Observed live shapes: schema errors
+// carry four elements ([label, value, message, path]); invalid-name errors
+// carry three; config_errors reuse the layout with a non-string fourth
+// element, so the tail is decoded best-effort.
+func (f *FieldCodeError) UnmarshalJSON(data []byte) error {
+	var raw []json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if len(raw) < 3 {
+		return fmt.Errorf("code_errors detail: want at least 3 elements, got %d", len(raw))
+	}
+	if err := json.Unmarshal(raw[0], &f.Label); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(raw[1], &f.Value); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(raw[2], &f.Message); err != nil {
+		return err
+	}
+	if len(raw) > 3 {
+		// Path is absent on some shapes and non-string on others; never let
+		// the tail kill the details we already have.
+		_ = json.Unmarshal(raw[3], &f.Path)
+	}
+	return nil
+}
+
+// parseActivationError inspects a start response body and returns an
+// *ActivationError when the platform refused activation. The body shape is
+// undocumented, so parsing is strictly best-effort: anything that doesn't
+// decode as success:false keeps the previous behavior (nil — callers fall
+// through to polling and the existing timeout diagnostics).
+func parseActivationError(recipeID int, body []byte) error {
+	// Two-pass parse: "success" alone decides blocked-or-not; the error
+	// details are decoded separately so a drifted code_errors shape can
+	// never suppress a definite refusal.
+	var probe struct {
+		Success *bool `json:"success"`
+	}
+	if err := json.Unmarshal(body, &probe); err != nil || probe.Success == nil || *probe.Success {
+		return nil
+	}
+	actErr := &ActivationError{RecipeID: recipeID}
+	var resp startResponse
+	if err := json.Unmarshal(body, &resp); err == nil {
+		actErr.CodeErrors = resp.CodeErrors
+		actErr.ConfigErrors = resp.ConfigErrors
+	}
+	return actErr
+}
+
+// MutationRefusedError reports a 2xx mutation response whose body carries
+// success:false — the platform acknowledged the request but refused to apply
+// it (e.g. deleting or updating a recipe that is currently running). Several
+// recipe lifecycle endpoints use this shape instead of a 4xx status.
+type MutationRefusedError struct {
+	Op      string
+	Reasons []string
+}
+
+func (e *MutationRefusedError) Error() string {
+	if len(e.Reasons) == 0 {
+		return e.Op + ": refused by the platform (success:false)"
+	}
+	return e.Op + ": " + strings.Join(e.Reasons, "; ")
+}
+
+// parseMutationRefusal inspects a 2xx mutation response body for the
+// {"success":false,"errors":{field:[messages]}} refusal shape. Best-effort,
+// mirroring parseActivationError: anything that doesn't decode as
+// success:false keeps the previous ignore-the-body behavior.
+func parseMutationRefusal(op string, body []byte) error {
+	var probe struct {
+		Success *bool               `json:"success"`
+		Errors  map[string][]string `json:"errors"`
+	}
+	if err := json.Unmarshal(body, &probe); err != nil || probe.Success == nil || *probe.Success {
+		return nil
+	}
+	e := &MutationRefusedError{Op: op}
+	for _, msgs := range probe.Errors {
+		e.Reasons = append(e.Reasons, msgs...)
+	}
+	sort.Strings(e.Reasons)
+	return e
 }
