@@ -4,6 +4,58 @@ All notable changes to `wk` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- `wk folders update <id> --name <new>` renames a folder or project, routing to
+  `PUT /projects/{id}` or `PUT /folders/{id}` by `is_project` (mirroring
+  `delete`). `wk folders list --projects` lists projects via `GET /projects`.
+  Because a project is itself a folder (the top-level container), the list now
+  reports each project's folder `id` as its constant identity — the id
+  `update`/`delete` accept — with `project_id` as an additive field, rather than
+  surfacing `GET /projects`' `id` (the project_id) as if it were the folder id.
+  This holds for both the table (`FOLDER ID`/`PROJECT ID` columns) and `--json`,
+  so an id copied from either path routes correctly instead of hitting
+  `PUT /folders/{project_id}`. Completes coverage of the Projects & folders
+  permission. ([#91](https://github.com/workato-devs/wk/issues/91))
+- `wk folders update <id> --parent <new-parent-id>` reparents a plain folder,
+  and can be combined with `--name` in the same call (`FolderService.Update`
+  now takes an optional `*string` name and `*int` parentID, sending only the
+  fields set). `PUT /folders/{id}` already accepted `parent_id` and performed
+  the move; the client just never sent it. Projects are always top-level and
+  reject `--parent` rather than silently no-oping.
+  ([#97](https://github.com/workato-devs/wk/issues/97))
+- `docs/known-limitations.md` — a permission-by-permission map of `wk` CLI
+  coverage, organized to mirror the Client Role editor.
+
+### Changed
+
+- `docs/command-reference.md` brought back to parity with the actual command
+  tree. It was missing `mcp servers` entirely (create/update/delete/
+  create-batch/get/list/token-renew/tools/policies/user-groups), `api clients`
+  and `api clients keys`, `agentic skills`, `workspace properties`,
+  `sync discover`, `recipes jobs get`/`retry`, `folders update`, and
+  `auth token`. Added a **Command reference check** item to the PR template so
+  command/flag surface changes come with a docs update in the same PR.
+- ADR-003 (MCP Strategy) amended: the platform shipped the `mcp_servers`
+  management API assumed unavailable when the ADR was written, so `wk mcp
+  servers` now covers the full CRUD/token-renew/policies/tools/user-groups
+  lifecycle the ADR had marked "Blocked". Also notes that the `token_renew`
+  regression for `auth_type: hashed_token` / `*.apim.mcp.*` servers flagged in
+  [#76](https://github.com/workato-devs/wk/issues/76) (token missing from
+  `mcp_url`) has been reported fixed by the platform team; no CLI change was
+  needed since `wk` only relays whatever `mcp_url` the API returns.
+
+### Fixed
+
+- `wk recipes jobs get` no longer silently drops per-step diagnostics. `JobLine`
+  now carries `input`, `output`, `error`, `error_descriptor`, and
+  `error_details` (including the downstream `http_response` status/body/headers);
+  `LineStat` gains `total`/`details` and `JobDetail` gains `error_parts`/
+  `job_correlation_id`. `--json` surfaces the full payload and text output prints
+  per-step errors. ([#89](https://github.com/workato-devs/wk/issues/89))
+
 ## [1.0.2] - 2026-07-08
 
 ### Fixed

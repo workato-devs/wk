@@ -39,6 +39,51 @@ func (s *folderService) Create(ctx context.Context, name string, parentID *int) 
 	return &folder, nil
 }
 
+// Update renames and/or reparents a plain folder via PUT /folders/{id}.
+// name and parentID are both optional (nil omits the field from the
+// request body) so a caller can rename without moving, move without
+// renaming, or do both in one request — matching the single PUT /folders/{id}
+// endpoint the API exposes for both operations rather than needing a
+// separate Move wrapper around the same endpoint. Projects use a separate
+// endpoint and cannot be reparented — callers must route by Folder.IsProject
+// and call UpdateProject instead (mirroring the Delete/DeleteProject split).
+func (s *folderService) Update(ctx context.Context, id int, name *string, parentID *int) (*Folder, error) {
+	body := map[string]any{}
+	if name != nil {
+		body["name"] = *name
+	}
+	if parentID != nil {
+		body["parent_id"] = *parentID
+	}
+	var folder Folder
+	if err := s.client.do(ctx, "PUT", fmt.Sprintf("/folders/%d", id), body, &folder); err != nil {
+		return nil, err
+	}
+	return &folder, nil
+}
+
+// UpdateProject renames a top-level project via PUT /projects/{id}. The
+// id here is the project_id (distinct from the folder id), matching
+// DeleteProject.
+func (s *folderService) UpdateProject(ctx context.Context, projectID int, name string) (*Folder, error) {
+	var folder Folder
+	body := map[string]any{"name": name}
+	if err := s.client.do(ctx, "PUT", fmt.Sprintf("/projects/%d", projectID), body, &folder); err != nil {
+		return nil, err
+	}
+	return &folder, nil
+}
+
+// ListProjects returns projects via their own endpoint (GET /projects),
+// rather than inferring them from the folder list's is_project flag.
+func (s *folderService) ListProjects(ctx context.Context) ([]Folder, error) {
+	var result []Folder
+	if err := s.client.do(ctx, "GET", "/projects", nil, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func (s *folderService) Delete(ctx context.Context, id int) error {
 	return s.client.do(ctx, "DELETE", fmt.Sprintf("/folders/%d", id), nil, nil)
 }
