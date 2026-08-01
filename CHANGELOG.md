@@ -47,16 +47,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `mcp_url`) has been reported fixed by the platform team; no CLI change was
   needed since `wk` only relays whatever `mcp_url` the API returns.
 
-### Changed
-
-- `docs/command-reference.md` brought back to parity with the actual command
-  tree. It was missing `mcp servers` entirely (create/update/delete/
-  create-batch/get/list/token-renew/tools/policies/user-groups), `api clients`
-  and `api clients keys`, `agentic skills`, `workspace properties`,
-  `sync discover`, `recipes jobs get`/`retry`, `folders update`, and
-  `auth token`. Added a **Command reference check** item to the PR template so
-  command/flag surface changes come with a docs update in the same PR.
-
 ### Fixed
 
 - `wk recipes jobs get` no longer silently drops per-step diagnostics. `JobLine`
@@ -65,6 +55,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `LineStat` gains `total`/`details` and `JobDetail` gains `error_parts`/
   `job_correlation_id`. `--json` surfaces the full payload and text output prints
   per-step errors. ([#89](https://github.com/workato-devs/wk/issues/89))
+
+## [1.0.2] - 2026-07-08
+
+### Fixed
+
 - `wk plugins install <name>` now works on Windows when the plugin was installed
   via Scoop. Previously, `exec.LookPath` resolved the name to Scoop's `shims\`
   directory (a launcher stub, not the plugin root), causing a "no plugin.toml
