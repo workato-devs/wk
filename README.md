@@ -34,8 +34,11 @@ Before you can use the CLI, you need a Workato API token. Creating one
 requires several steps in the Workato UI:
 
 1. **Create a Client Role** — go to **Workspace admin > API clients > Client
-   roles** and create a role with the permissions you need (projects,
-   connections, recipes, lifecycle management, etc.)
+   roles** and create a role with at least the following permissions:
+   - **Admin** --> Workspace details
+   - **Projects** --> Recipe Lifecycle Management (both Recipe lifecycle mgmt and Export manifests permissions required for push/pull functionality)
+   - **Projects** --> Any added metadata types you need to work with (Projects, Folders, etc)
+   - **Tools** --> Any added metadata or features you need to work with (Note: not all platform features are accessible via `wk` yet. See [Known Limitations](./docs/known-limitations.md) for a permission-by-permission map of what the CLI covers.)
 2. **Create an API Client** — go to **Workspace admin > API clients**, create
    a client, assign the role, and specify environment/project access
 3. **Copy the token** — the token (starts with `wrk`) is shown once at
@@ -254,14 +257,11 @@ substitute for environment discipline.
 
 ## Current limitations
 
-These features are planned but not yet available:
-
-- **Auth Tier 1** — external secrets-manager backends (Vault, AWS Secrets Manager, Doppler)
-- **Auth Tier 4** — encrypted file-based credential store
-- **`wk auth rotate`** — credential rotation
-- **`wk migrate`** — automated migration from the legacy Python CLI
-- **`--toml` output format** — `--json` and text tables are supported
-- **`--no-color`** — accepted on all commands but currently a no-op
+Not every Workato platform capability is accessible via `wk` yet. See
+[docs/known-limitations.md](./docs/known-limitations.md) for a permission-by-permission
+map (organized to mirror the Client Role editor: Projects, Tools, Admin) of what
+the CLI covers, plus CLI-only gaps such as external secrets-manager backends,
+`wk auth rotate`, and `--toml` output.
 
 ## Development (CLI internals only)
 
