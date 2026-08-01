@@ -4,7 +4,7 @@ All notable changes to `wk` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.0.3] - 2026-08-01
 
 ### Added
 
@@ -53,16 +53,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `wk recipes start` no longer hangs for the full poll timeout when activation
+  is blocked: `PUT /recipes/{id}/start` returns HTTP 200 with `success:false`
+  and a `code_errors` payload for blocked activations, which was previously
+  discarded. The command now decodes it and prints the step-level detail
+  immediately instead of polling; bulk/`--no-wait` runs collect blocked
+  recipes and continue with the rest of the batch. `wk recipes
+  delete`/`update`/`move` had the same exposure — `DELETE`/`PUT
+  /recipes/{id}` also return HTTP 200 for refusals (e.g. the recipe is
+  running) — and previously proceeded to mutate local state (e.g. removing
+  `.recipe.json` on a refused delete) as if the server call had succeeded.
+  All four now surface the refusal and exit non-zero instead.
+  ([#70](https://github.com/workato-devs/wk/issues/70))
 - `wk recipes jobs get` no longer silently drops per-step diagnostics. `JobLine`
   now carries `input`, `output`, `error`, `error_descriptor`, and
   `error_details` (including the downstream `http_response` status/body/headers);
   `LineStat` gains `total`/`details` and `JobDetail` gains `error_parts`/
   `job_correlation_id`. `--json` surfaces the full payload and text output prints
-  per-step errors. ([#89](https://github.com/workato-devs/wk/issues/89))
+  per-step errors. `ErrorDescriptor`/`ErrorParts` also carried JSON tags that
+  didn't match the API's field names, so both silently decoded to their zero
+  value; the tags now match the live response shape, and all four diagnostic
+  structs are covered by a field-coverage test to catch future renames.
+  ([#89](https://github.com/workato-devs/wk/issues/89))
 - Plugin commands without a renderer now fall back to deterministic indented
   JSON instead of exposing nested values as Go `map[...]` syntax. Renderer
   failures warn and use the same fallback without changing the primary command
   result or exit code. ([#90](https://github.com/workato-devs/wk/issues/90))
+- `ValidateLocalPath` now also rejects Windows-style rooted paths — a drive
+  letter via `filepath.VolumeName`, or a leading `/` or `\` — that
+  `filepath.IsAbs` doesn't catch on all platforms (e.g. `/tmp/evil` was
+  previously accepted as "relative" on Windows).
+  ([#88](https://github.com/workato-devs/wk/issues/88))
 
 ## [1.0.2] - 2026-07-08
 
