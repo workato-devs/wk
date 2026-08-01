@@ -48,7 +48,7 @@ func (m *refreshMockFolders) ListProjects(_ context.Context) ([]api.Folder, erro
 	return nil, nil
 }
 
-func (m *refreshMockFolders) Update(_ context.Context, _ int, _ string) (*api.Folder, error) {
+func (m *refreshMockFolders) Update(_ context.Context, _ int, _ *string, _ *int) (*api.Folder, error) {
 	return nil, nil
 }
 

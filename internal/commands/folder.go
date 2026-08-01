@@ -147,16 +147,23 @@ func newFoldersListCmd() *cobra.Command {
 
 func newFoldersUpdateCmd() *cobra.Command {
 	var name string
+	var parentID int
 
 	cmd := &cobra.Command{
-		Use:     "update <id>",
-		Short:   "Rename a folder or project",
-		Example: `  wk folders update 123 --name "New name"`,
-		Long: `Rename a top-level Workato project or a nested folder. The Workato
-API uses separate endpoints — PUT /projects/{id} for projects
-(is_project=true), PUT /folders/{id} for plain folders. This
-command lists top-level folders first and routes to the correct
-endpoint based on the target's is_project flag (mirroring delete).`,
+		Use:   "update <id>",
+		Short: "Rename and/or move a folder or project",
+		Example: `  wk folders update 123 --name "New name"
+  wk folders update 123 --parent 456
+  wk folders update 123 --name "New name" --parent 456`,
+		Long: `Rename and/or reparent a top-level Workato project or a nested
+folder. The Workato API uses separate endpoints — PUT /projects/{id} for
+projects (is_project=true), PUT /folders/{id} for plain folders — and the
+same PUT /folders/{id} endpoint handles both rename (name) and move
+(parent_id), so --name and --parent can be set independently or together in
+one call. This command lists top-level folders first and routes to the
+correct endpoint based on the target's is_project flag (mirroring delete).
+Projects are always top-level and cannot be reparented; --parent is only
+valid for plain folders.`,
 		Args: requireArgs(1, "folder ID is required, e.g.: wk folders update <id> --name <new>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
@@ -168,8 +175,10 @@ endpoint based on the target's is_project flag (mirroring delete).`,
 				return err
 			}
 
-			if name == "" {
-				return fmt.Errorf("--name is required")
+			nameChanged := cmd.Flags().Changed("name")
+			parentChanged := cmd.Flags().Changed("parent")
+			if !nameChanged && !parentChanged {
+				return fmt.Errorf("at least one of --name or --parent is required")
 			}
 
 			id, err := strconv.Atoi(args[0])
@@ -195,13 +204,24 @@ endpoint based on the target's is_project flag (mirroring delete).`,
 
 			var updated *api.Folder
 			if match != nil && match.IsProject {
+				if parentChanged {
+					return fmt.Errorf("folder %d is a project; projects are always top-level and cannot be reparented", id)
+				}
 				// PUT /projects/{project_id} — not folder_id.
 				if match.ProjectID == 0 {
 					return fmt.Errorf("folder %d is a project but the API did not return project_id; cannot route update", id)
 				}
 				updated, err = client.Folders().UpdateProject(cmd.Context(), match.ProjectID, name)
 			} else {
-				updated, err = client.Folders().Update(cmd.Context(), id, name)
+				var namePtr *string
+				if nameChanged {
+					namePtr = &name
+				}
+				var parentPtr *int
+				if parentChanged {
+					parentPtr = &parentID
+				}
+				updated, err = client.Folders().Update(cmd.Context(), id, namePtr, parentPtr)
 			}
 			if err != nil {
 				return err
@@ -210,12 +230,20 @@ endpoint based on the target's is_project flag (mirroring delete).`,
 			if flagJSON {
 				return rctx.Formatter.Format(os.Stdout, updated)
 			}
-			fmt.Fprintf(os.Stderr, "Renamed %d to %q\n", id, updated.Name)
+			switch {
+			case nameChanged && parentChanged:
+				fmt.Fprintf(os.Stderr, "Renamed %d to %q and moved to parent %d\n", id, updated.Name, parentID)
+			case parentChanged:
+				fmt.Fprintf(os.Stderr, "Moved %d to parent %d\n", id, parentID)
+			default:
+				fmt.Fprintf(os.Stderr, "Renamed %d to %q\n", id, updated.Name)
+			}
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&name, "name", "", "New name for the folder or project (required)")
+	cmd.Flags().StringVar(&name, "name", "", "New name for the folder or project")
+	cmd.Flags().IntVar(&parentID, "parent", 0, "New parent folder ID (plain folders only; projects cannot be reparented)")
 	return cmd
 }
 

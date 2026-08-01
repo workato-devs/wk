@@ -59,7 +59,7 @@ type FolderService interface {
 	List(ctx context.Context, parentID *int) ([]Folder, error)
 	ListProjects(ctx context.Context) ([]Folder, error)
 	Create(ctx context.Context, name string, parentID *int) (*Folder, error)
-	Update(ctx context.Context, id int, name string) (*Folder, error)
+	Update(ctx context.Context, id int, name *string, parentID *int) (*Folder, error)
 	UpdateProject(ctx context.Context, projectID int, name string) (*Folder, error)
 	Delete(ctx context.Context, id int) error
 	DeleteProject(ctx context.Context, id int) error

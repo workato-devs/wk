@@ -19,6 +19,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   so an id copied from either path routes correctly instead of hitting
   `PUT /folders/{project_id}`. Completes coverage of the Projects & folders
   permission. ([#91](https://github.com/workato-devs/wk/issues/91))
+- `wk folders update <id> --parent <new-parent-id>` reparents a plain folder,
+  and can be combined with `--name` in the same call (`FolderService.Update`
+  now takes an optional `*string` name and `*int` parentID, sending only the
+  fields set). `PUT /folders/{id}` already accepted `parent_id` and performed
+  the move; the client just never sent it. Projects are always top-level and
+  reject `--parent` rather than silently no-oping.
+  ([#97](https://github.com/workato-devs/wk/issues/97))
 - `docs/known-limitations.md` — a permission-by-permission map of `wk` CLI
   coverage, organized to mirror the Client Role editor.
 

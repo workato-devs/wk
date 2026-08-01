@@ -45,7 +45,7 @@ wk
   folders (folder)
     list            List folders (--projects to list projects)
     create          Create a folder
-    update          Rename a folder or project
+    update          Rename and/or move a folder or project (--name, --parent)
     delete          Delete a folder or project
   tags (tag)
     list            List tags

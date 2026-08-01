@@ -111,18 +111,87 @@ func TestFolderService_Update(t *testing.T) {
 		if body["name"] != "renamed" {
 			t.Errorf("name = %v, want renamed", body["name"])
 		}
+		if _, ok := body["parent_id"]; ok {
+			t.Errorf("parent_id = %v, want absent (nil parentID must be omitted)", body["parent_id"])
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(Folder{ID: 7, Name: "renamed"})
 	}))
 	defer srv.Close()
 
 	client := NewHTTPClient(srv.URL, "test-token")
-	folder, err := client.Folders().Update(context.Background(), 7, "renamed")
+	name := "renamed"
+	folder, err := client.Folders().Update(context.Background(), 7, &name, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if folder.Name != "renamed" {
 		t.Errorf("name = %q, want renamed", folder.Name)
+	}
+}
+
+// TestFolderService_Update_Reparent pins that Update can move a folder via
+// parent_id alone (no name), and that a nil name is omitted from the request
+// body rather than sent as an empty string that would blank out the folder's
+// name server-side.
+func TestFolderService_Update_Reparent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/folders/7" {
+			t.Errorf("path = %s, want /folders/7", r.URL.Path)
+		}
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		if _, ok := body["name"]; ok {
+			t.Errorf("name = %v, want absent (nil name must be omitted)", body["name"])
+		}
+		if body["parent_id"] != float64(456) {
+			t.Errorf("parent_id = %v, want 456", body["parent_id"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		parentID := 456
+		json.NewEncoder(w).Encode(Folder{ID: 7, Name: "unchanged", ParentID: &parentID})
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	parentID := 456
+	folder, err := client.Folders().Update(context.Background(), 7, nil, &parentID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if folder.ParentID == nil || *folder.ParentID != 456 {
+		t.Errorf("parentID = %v, want 456", folder.ParentID)
+	}
+}
+
+// TestFolderService_Update_RenameAndReparent pins that a single Update call
+// can send both fields at once, since PUT /folders/{id} is one endpoint for
+// both operations rather than needing a separate Move wrapper.
+func TestFolderService_Update_RenameAndReparent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["name"] != "renamed" {
+			t.Errorf("name = %v, want renamed", body["name"])
+		}
+		if body["parent_id"] != float64(456) {
+			t.Errorf("parent_id = %v, want 456", body["parent_id"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		parentID := 456
+		json.NewEncoder(w).Encode(Folder{ID: 7, Name: "renamed", ParentID: &parentID})
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	name := "renamed"
+	parentID := 456
+	folder, err := client.Folders().Update(context.Background(), 7, &name, &parentID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if folder.Name != "renamed" || folder.ParentID == nil || *folder.ParentID != 456 {
+		t.Errorf("got name=%q parentID=%v, want name=renamed parentID=456", folder.Name, folder.ParentID)
 	}
 }
 

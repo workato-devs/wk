@@ -71,7 +71,7 @@ func (m *createMockFolders) ListProjects(_ context.Context) ([]api.Folder, error
 	return nil, nil
 }
 
-func (m *createMockFolders) Update(_ context.Context, _ int, _ string) (*api.Folder, error) {
+func (m *createMockFolders) Update(_ context.Context, _ int, _ *string, _ *int) (*api.Folder, error) {
 	return nil, nil
 }
 
