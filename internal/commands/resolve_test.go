@@ -111,6 +111,7 @@ func setupIsolatedHome(t *testing.T) string {
 	t.Helper()
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
+	t.Setenv("USERPROFILE", tmpHome) // Required on Windows where os.UserHomeDir reads USERPROFILE
 	os.MkdirAll(filepath.Join(tmpHome, ".wk"), 0700)
 
 	cwd := t.TempDir()

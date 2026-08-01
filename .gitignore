@@ -22,7 +22,8 @@ Thumbs.db
 *.env
 
 # Agent tooling
-.claude/settings.local.json
+.claude/
+.codex/
 .cursor/
 .cursorrules
 .windsurf/
@@ -32,3 +33,4 @@ Thumbs.db
 # Test & dev artifacts
 *.test
 coverage.out
+/tmp

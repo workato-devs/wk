@@ -15,6 +15,8 @@ func TestValidateLocalPath_StringLevelRejections(t *testing.T) {
 		{"empty string", "", "cannot be empty"},
 		{"null byte", "foo\x00bar", "null byte"},
 		{"absolute path", "/tmp/evil", "must be relative"},
+		{"absolute path windows drive", `C:\Windows\evil`, "must be relative"},
+		{"rooted backslash", `\evil`, "must be relative"},
 		{"bare parent traversal", "..", "escapes the project root"},
 		{"leading parent traversal", "../evil", "escapes the project root"},
 		{"deeper traversal collapse", "./foo/../../evil", "escapes the project root"},

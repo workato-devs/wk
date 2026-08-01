@@ -19,7 +19,12 @@ func ValidateLocalPath(projectRoot, localPath string) error {
 	if strings.ContainsRune(localPath, 0) {
 		return fmt.Errorf("local path %q contains a null byte", localPath)
 	}
-	if filepath.IsAbs(localPath) {
+	if filepath.IsAbs(localPath) || filepath.VolumeName(localPath) != "" {
+		return fmt.Errorf("local path %q must be relative to the project root", localPath)
+	}
+	// Reject rooted paths (e.g. "/tmp/evil" on Unix, or "\foo" on Windows)
+	// which filepath.IsAbs may not catch on all platforms.
+	if len(localPath) > 0 && (localPath[0] == '/' || localPath[0] == '\\') {
 		return fmt.Errorf("local path %q must be relative to the project root", localPath)
 	}
 	cleaned := filepath.Clean(localPath)
