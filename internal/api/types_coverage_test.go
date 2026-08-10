@@ -193,7 +193,7 @@ func TestStructFieldCoverage(t *testing.T) {
 			structType: reflect.TypeOf(AuditLogEntry{}),
 			expectedFields: []string{
 				"id", "event_type", "timestamp",
-				"user", "details",
+				"user", "resource", "workspace", "details",
 			},
 		},
 		{
