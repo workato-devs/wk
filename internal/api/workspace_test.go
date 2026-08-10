@@ -44,8 +44,8 @@ func TestWorkspaceService_ListMembers(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-				"data": []WorkspaceUser{{ID: 2, Name: "Bob", Email: "bob@example.com"}},
-			})
+			"data": []WorkspaceUser{{ID: 2, Name: "Bob", Email: "bob@example.com"}},
+		})
 	}))
 	defer srv.Close()
 
@@ -72,12 +72,21 @@ func TestWorkspaceService_GetAuditLogs(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-				"data": []AuditLogEntry{{ID: 1, EventType: "recipe_started", User: struct {
-						ID    int    `json:"id"`
-						Name  string `json:"name"`
-						Email string `json:"email"`
-					}{ID: 10}}},
-			})
+			"data": []map[string]any{{
+				"id":         1,
+				"event_type": "recipe_started",
+				"user":       map[string]any{"id": 10},
+				"resource": map[string]any{
+					"id":   42,
+					"name": "Production sync recipe",
+					"type": "recipe",
+				},
+				"workspace": map[string]any{
+					"id":   99,
+					"name": "Acme production",
+				},
+			}},
+		})
 	}))
 	defer srv.Close()
 
@@ -91,5 +100,13 @@ func TestWorkspaceService_GetAuditLogs(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].EventType != "recipe_started" {
 		t.Errorf("got %+v, want 1 entry", entries)
+	}
+	resource, ok := entries[0].Resource.(map[string]any)
+	if !ok || resource["id"] != float64(42) || resource["type"] != "recipe" {
+		t.Errorf("Resource = %#v, want the API resource object", entries[0].Resource)
+	}
+	workspace, ok := entries[0].Workspace.(map[string]any)
+	if !ok || workspace["id"] != float64(99) || workspace["name"] != "Acme production" {
+		t.Errorf("Workspace = %#v, want the API workspace object", entries[0].Workspace)
 	}
 }
