@@ -200,7 +200,15 @@ func TestStructFieldCoverage(t *testing.T) {
 			name:       "Connector",
 			structType: reflect.TypeOf(Connector{}),
 			expectedFields: []string{
-				"name", "title", "description",
+				"id", "name", "title", "latest_released_version",
+				"latest_released_version_note", "released_versions", "static_webhook_url",
+			},
+		},
+		{
+			name:       "ConnectorReleasedVersion",
+			structType: reflect.TypeOf(ConnectorReleasedVersion{}),
+			expectedFields: []string{
+				"version", "version_note", "created_at", "released_at",
 			},
 		},
 		{
@@ -332,7 +340,7 @@ func TestStructFieldCoverage_TableColumns(t *testing.T) {
 		"Tag":              {"handle", "title", "description", "color"},
 		"WorkspaceUser":    {"id", "name", "email"},
 		"AuditLogEntry":    {"id", "event_type", "user", "timestamp"},
-		"Connector":        {"name", "title", "description"},
+		"Connector":        {"id", "name", "title", "latest_released_version"},
 		"Skill":            {"id", "name", "provider_id", "folder_id", "project_id", "running"},
 		"APIClient":        {"id", "name", "auth_type", "api_collections", "active_api_keys_count"},
 		"MCPManagedServer": {"id", "name", "auth_type", "tools_count", "project_id", "folder_id"},

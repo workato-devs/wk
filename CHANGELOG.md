@@ -4,6 +4,22 @@ All notable changes to `wk` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- `wk connectors list` now lists the workspace's custom SDK connectors. It was
+  calling `GET /integrations`, which is a lookup of built-in platform connector
+  metadata by name: with no `?applications=` it returns `{"items": []}` and HTTP
+  200, so the command reported an empty workspace instead of failing, and with
+  `--search` it returned the named *native* connector (e.g. Salesforce). It now
+  calls `GET /custom_connectors` and decodes that endpoint's `result` envelope.
+  `--search` filters client-side, case-insensitively, on name and title, rather
+  than using `/custom_connectors/search`, which is case-sensitive and returns
+  only the ten most recently released connectors. The table gains `ID` and
+  `RELEASED` columns and drops `DESCRIPTION`, which this endpoint does not return;
+  `--json` now includes `id`, `latest_released_version`, and `released_versions`.
+
 ## [1.0.3] - 2026-08-01
 
 ### Added
