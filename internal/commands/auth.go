@@ -534,6 +534,19 @@ func newAuthListCmd() *cobra.Command {
 				return err
 			}
 
+			// --store-type narrows the list to one store (#105). Without it,
+			// keychain profiles are listed and file-store profiles are merged
+			// in when inside a project with profiles.env.
+			switch flagStoreType {
+			case "", string(auth.StoreKeychain), string(auth.StoreFile):
+			default:
+				return fmt.Errorf("unknown --store-type %q; valid: %s, %s",
+					flagStoreType, auth.StoreKeychain, auth.StoreFile)
+			}
+			if flagStoreType == string(auth.StoreFile) {
+				profiles = nil
+			}
+
 			activeName, _ := pm.GetActiveProfile()
 			keychainNames := make(map[string]bool, len(profiles))
 			for _, p := range profiles {
@@ -548,20 +561,34 @@ func newAuthListCmd() *cobra.Command {
 				items = append(items, profileListItem{Profile: p, Active: activeName == p.Name})
 			}
 
-			// Merge file-store profiles when inside a project with profiles.env.
-			if cwd, werr := os.Getwd(); werr == nil {
-				if root, rerr := config.FindProjectRoot(cwd); rerr == nil {
-					fs := auth.NewFileStore(root)
-					if fs.Exists() {
-						fileProfiles, ferr := fs.ListProfiles()
-						if ferr != nil {
-							fmt.Fprintf(os.Stderr, "Warning: could not read %s: %v\n", fs.Path, ferr)
-						}
-						for _, p := range fileProfiles {
-							rows = append(rows, profileRow(p, false, keychainNames[p.Name]))
-							items = append(items, profileListItem{Profile: p, Shadowed: keychainNames[p.Name]})
+			var fs *auth.FileStore
+			switch flagStoreType {
+			case string(auth.StoreFile):
+				// Explicitly requested: fail the same way every other command
+				// does when there's no project or no profiles.env.
+				if fs, err = fileStoreForCwd(); err != nil {
+					return err
+				}
+			case "":
+				if cwd, werr := os.Getwd(); werr == nil {
+					if root, rerr := config.FindProjectRoot(cwd); rerr == nil {
+						if candidate := auth.NewFileStore(root); candidate.Exists() {
+							fs = candidate
 						}
 					}
+				}
+			}
+			if fs != nil {
+				fileProfiles, ferr := fs.ListProfiles()
+				if ferr != nil {
+					if flagStoreType == string(auth.StoreFile) {
+						return fmt.Errorf("reading %s: %w", fs.Path, ferr)
+					}
+					fmt.Fprintf(os.Stderr, "Warning: could not read %s: %v\n", fs.Path, ferr)
+				}
+				for _, p := range fileProfiles {
+					rows = append(rows, profileRow(p, false, keychainNames[p.Name]))
+					items = append(items, profileListItem{Profile: p, Shadowed: keychainNames[p.Name]})
 				}
 			}
 

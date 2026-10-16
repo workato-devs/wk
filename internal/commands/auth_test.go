@@ -165,6 +165,92 @@ func TestAuthList_MergesFileStoreAndShadows(t *testing.T) {
 	}
 }
 
+// Regression for #105: auth list must honor --store-type rather than
+// silently discarding it.
+func TestAuthList_StoreTypeFlag(t *testing.T) {
+	keychainProfile := &auth.Profile{
+		Name: "kc", Workspace: "acme", WorkspaceID: 1, Environment: "prod",
+		Region: auth.RegionUS, StoreType: auth.StoreKeychain, BaseURL: "https://www.workato.com",
+	}
+
+	run := func(t *testing.T, args ...string) ([]string, error) {
+		t.Helper()
+		origJSON := flagJSON
+		t.Cleanup(func() { flagJSON = origJSON })
+		origStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+		root := NewRootCmd()
+		root.AddCommand(newAuthCmd())
+		root.SetArgs(append([]string{"auth", "list", "--json"}, args...))
+		err := root.Execute()
+		w.Close()
+		os.Stdout = origStdout
+		var buf bytes.Buffer
+		buf.ReadFrom(r)
+		if err != nil {
+			return nil, err
+		}
+		var items []map[string]any
+		if jerr := json.Unmarshal(buf.Bytes(), &items); jerr != nil {
+			t.Fatalf("unmarshal %q: %v", buf.String(), jerr)
+		}
+		var names []string
+		for _, it := range items {
+			names = append(names, it["name"].(string))
+		}
+		return names, nil
+	}
+
+	inProject := func(t *testing.T) {
+		resetGlobalFlags(t)
+		cwd := setupIsolatedHome(t)
+		seedKeychainProfile(t, keychainProfile, true)
+		seedProjectProfilesEnv(t, cwd, "file-ci")
+	}
+
+	tests := []struct {
+		name      string
+		setup     func(t *testing.T)
+		args      []string
+		wantNames string // comma-joined, for an error-free run
+		wantErr   string
+	}{
+		{name: "no flag merges both stores", setup: inProject, wantNames: "kc,file-ci"},
+		{name: "file lists only file-store profiles", setup: inProject, args: []string{"--store-type", "file"}, wantNames: "file-ci"},
+		{name: "keychain lists only keychain profiles", setup: inProject, args: []string{"--store-type", "keychain"}, wantNames: "kc"},
+		{name: "unknown store type errors", setup: inProject, args: []string{"--store-type", "bogus"}, wantErr: `unknown --store-type "bogus"`},
+		{
+			name: "file outside a project errors",
+			setup: func(t *testing.T) {
+				resetGlobalFlags(t)
+				setupIsolatedHome(t)
+				seedKeychainProfile(t, keychainProfile, true)
+			},
+			args:    []string{"--store-type", "file"},
+			wantErr: "--store-type file requires a project directory",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setup(t)
+			names, err := run(t, tt.args...)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("err = %v, want containing %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("auth list: %v", err)
+			}
+			if got := strings.Join(names, ","); got != tt.wantNames {
+				t.Errorf("profiles = %q, want %q", got, tt.wantNames)
+			}
+		})
+	}
+}
+
 func TestComputeProfileName(t *testing.T) {
 	cases := []struct {
 		workspace, environment, region, want string

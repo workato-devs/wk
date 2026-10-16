@@ -33,6 +33,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   check. When a duplicate is real, the error now gives the workspace ID and the
   two ways forward: use that profile, or `wk auth delete` it first.
   ([#100](https://github.com/workato-devs/wk/issues/100))
+- `wk auth list` now honors `--store-type`. It silently discarded the flag
+  and listed keychain profiles with exit 0, so `--store-type file` outside a
+  project looked like "no file-store profiles" rather than "no project here".
+  With no flag the list is unchanged (keychain profiles, plus `profiles.env`
+  profiles inside a project). `--store-type keychain` lists only keychain
+  profiles. `--store-type file` lists only `profiles.env` profiles, and outside
+  a project or without a `profiles.env` it fails with the same error as every
+  other command. ([#105](https://github.com/workato-devs/wk/issues/105))
 - `wk auth login` no longer leaves a profile with no token behind when the
   token can't be stored in the OS keychain. The profile was saved first and
   kept even when the keychain write failed, so later commands found a profile
