@@ -120,7 +120,7 @@ func newSkillsGetCmd() *cobra.Command {
 				strconv.Itoa(skill.ProjectID),
 				running,
 			}}
-			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+			return rctx.Formatter.FormatList(os.Stdout, skill, headers, rows)
 		},
 	}
 }

@@ -537,8 +537,10 @@ func newAuthListCmd() *cobra.Command {
 
 			headers := []string{"NAME", "WORKSPACE", "ENVIRONMENT", "REGION", "STORE", "ACTIVE"}
 			var rows [][]string
+			var items []profileListItem
 			for _, p := range profiles {
 				rows = append(rows, profileRow(p, activeName == p.Name, false))
+				items = append(items, profileListItem{Profile: p, Active: activeName == p.Name})
 			}
 
 			// Merge file-store profiles when inside a project with profiles.env.
@@ -552,18 +554,39 @@ func newAuthListCmd() *cobra.Command {
 						}
 						for _, p := range fileProfiles {
 							rows = append(rows, profileRow(p, false, keychainNames[p.Name]))
+							items = append(items, profileListItem{Profile: p, Shadowed: keychainNames[p.Name]})
 						}
 					}
 				}
 			}
 
-			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+			if len(items) == 0 {
+				if flagJSON {
+					return rctx.Formatter.FormatList(os.Stdout, items, nil, nil)
+				}
+				if !rctx.Quiet {
+					fmt.Fprintln(os.Stderr, "No auth profiles found. Add one with: wk auth login")
+				}
+				return nil
+			}
+
+			return rctx.Formatter.FormatList(os.Stdout, items, headers, rows)
 		},
 	}
 }
 
 // profileRow formats one auth-list row. When shadowed is true, the name is
 // annotated to show that keychain routing would shadow this file-store entry.
+// profileListItem is one `wk auth list --json` entry: the profile plus the
+// two facts the table shows as decorations ("*" and "(shadowed)").
+type profileListItem struct {
+	*auth.Profile
+	Active bool `json:"active"`
+	// Shadowed marks a profiles.env profile hidden by a keychain profile of
+	// the same name.
+	Shadowed bool `json:"shadowed,omitempty"`
+}
+
 func profileRow(p *auth.Profile, isActive, shadowed bool) []string {
 	active := ""
 	if isActive {

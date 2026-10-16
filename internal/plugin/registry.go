@@ -16,9 +16,9 @@ type Registry struct {
 
 // InstalledPlugin describes a plugin found in the registry.
 type InstalledPlugin struct {
-	Name    string
-	Version string
-	Dir     string
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Dir     string `json:"dir"`
 }
 
 // NewRegistry creates a Registry with the default directory (~/.wk/plugins/).

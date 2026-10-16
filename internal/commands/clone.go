@@ -111,7 +111,10 @@ pull/push/diff calls skip the folder-hierarchy lookup.`,
 				for _, r := range results {
 					rows = append(rows, []string{r.FilePath, r.Action})
 				}
-				return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+				return rctx.Formatter.FormatList(os.Stdout, results, headers, rows)
+			}
+			if flagJSON {
+				return rctx.Formatter.FormatList(os.Stdout, results, nil, nil)
 			}
 			return nil
 		},

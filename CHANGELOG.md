@@ -19,6 +19,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   only the ten most recently released connectors. The table gains `ID` and
   `RELEASED` columns and drops `DESCRIPTION`, which this endpoint does not return;
   `--json` now includes `id`, `latest_released_version`, and `released_versions`.
+- `wk workspace audit-log --json` now includes each entry's `resource` and
+  `workspace` objects, as returned by `GET /api/activity_logs`. They were
+  dropped while decoding the response because the struct didn't model them.
+  The table is unchanged. ([#103](https://github.com/workato-devs/wk/issues/103))
 - `wk diff` no longer reports every JSON asset as `modified` right after a
   `wk clone` or `wk pull`. Pull writes JSON normalized (sorted keys,
   consistent indentation) and records that hash, but diff hashed the remote
@@ -26,6 +30,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   unaffected. Diff now hashes remote files exactly as pull writes them,
   through one shared function so the two can't drift apart again. Regression
   from the #13 fix. ([#102](https://github.com/workato-devs/wk/issues/102))
+- **`--json` changed shape for `wk diff`, `wk status`, `wk pull`, `wk clone`,
+  `wk auth list` and `wk plugins list`.** These commands emitted the text
+  table as JSON: each row keyed by its column header, holding display values.
+  For example, `wk diff --json` returned `"STATUS"` and `"LOCAL HASH"` with
+  hashes cut to 8 characters. They now emit their structs, which is what
+  every other command's `--json` already did:
+  - `diff`: `path`, `type`, `local_hash`, `remote_hash` (full SHA-256)
+  - `status`: `file_path`, `status`, and `server_path` once the file has been
+    synced (a new local file has no server path yet, so it's left out)
+  - `pull`/`clone`: `file_path`, `action`, and `error`, which was previously
+    dropped for per-file failures under `--skip-errors`
+  - `auth list`: the profile's fields plus `active` and `shadowed`
+  - `plugins list`: `name`, `version`, `dir`
+
+  An empty result is now `[]` on stdout. Previously `diff`, `status`, `pull`,
+  `clone` and `plugins list` wrote nothing to stdout under `--json` (only a
+  note on stderr), so parsers got an empty string.
+
+  With no profiles, `wk auth list` now prints `No auth profiles found. Add one
+  with: wk auth login` instead of a table with only a header row.
+
+  **Scripts that parse the old header keys need updating.** To stop this
+  recurring, `Formatter.FormatList` now takes the data alongside the table
+  rows, and its JSON mode encodes only the data.
 
 ## [1.0.3] - 2026-08-01
 

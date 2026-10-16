@@ -15,7 +15,7 @@ func (f *TextFormatter) Format(w io.Writer, data any) error {
 	return err
 }
 
-func (f *TextFormatter) FormatList(w io.Writer, headers []string, rows [][]string) error {
+func (f *TextFormatter) FormatList(w io.Writer, _ any, headers []string, rows [][]string) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, strings.Join(headers, "\t"))
 	for _, row := range rows {
@@ -25,5 +25,5 @@ func (f *TextFormatter) FormatList(w io.Writer, headers []string, rows [][]strin
 }
 
 func (f *TextFormatter) FormatPage(w io.Writer, _ any, headers []string, rows [][]string, _ PageMeta) error {
-	return f.FormatList(w, headers, rows)
+	return f.FormatList(w, nil, headers, rows)
 }

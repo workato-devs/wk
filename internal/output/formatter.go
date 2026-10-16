@@ -6,8 +6,11 @@ import "io"
 type Formatter interface {
 	// Format writes a single data object.
 	Format(w io.Writer, data any) error
-	// FormatList writes tabular data with headers and rows.
-	FormatList(w io.Writer, headers []string, rows [][]string) error
+	// FormatList writes a list. In JSON mode, data (the native structs) is
+	// encoded as-is; in text mode headers+rows render as a table. JSON never
+	// comes from the rows: those hold display values (truncated hashes,
+	// "(unset)", "*") under display headers, which is not a contract (#102).
+	FormatList(w io.Writer, data any, headers []string, rows [][]string) error
 	// FormatPage writes a paginated list response. In JSON mode, data
 	// (the native API structs) is wrapped with pagination metadata; in
 	// text mode it renders headers+rows as a table. This preserves native

@@ -144,6 +144,9 @@ func newPluginsListCmd() *cobra.Command {
 			}
 
 			if len(plugins) == 0 {
+				if flagJSON {
+					return rctx.Formatter.FormatList(os.Stdout, plugins, nil, nil)
+				}
 				fmt.Fprintln(os.Stderr, "No plugins installed.")
 				return nil
 			}
@@ -153,7 +156,7 @@ func newPluginsListCmd() *cobra.Command {
 			for _, p := range plugins {
 				rows = append(rows, []string{p.Name, p.Version, p.Dir})
 			}
-			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+			return rctx.Formatter.FormatList(os.Stdout, plugins, headers, rows)
 		},
 	}
 }

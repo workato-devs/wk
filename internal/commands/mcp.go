@@ -95,7 +95,7 @@ func newMCPToolsCmd() *cobra.Command {
 			}
 
 			fmt.Fprintf(os.Stderr, "%d tools available\n\n", len(tools))
-			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+			return rctx.Formatter.FormatList(os.Stdout, tools, headers, rows)
 		},
 	}
 }

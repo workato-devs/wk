@@ -497,7 +497,7 @@ func newRecipesJobsCmd() *cobra.Command {
 					errMsg,
 				})
 			}
-			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+			return rctx.Formatter.FormatList(os.Stdout, jobs, headers, rows)
 		},
 	}
 
@@ -574,7 +574,7 @@ func newRecipesJobsGetCmd() *cobra.Command {
 						completed,
 					})
 				}
-				if err := rctx.Formatter.FormatList(os.Stdout, headers, rows); err != nil {
+				if err := rctx.Formatter.FormatList(os.Stdout, detail.Lines, headers, rows); err != nil {
 					return err
 				}
 
@@ -636,7 +636,7 @@ func newRecipesJobsRetryCmd() *cobra.Command {
 			for _, r := range result.Results {
 				rows = append(rows, []string{r.JobID, r.Status, r.Error})
 			}
-			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+			return rctx.Formatter.FormatList(os.Stdout, result, headers, rows)
 		},
 	}
 }
@@ -1122,7 +1122,7 @@ func runRecipesVersionsList(cmd *cobra.Command, args []string) error {
 			v.CreatedAt.Format(time.RFC3339),
 		})
 	}
-	return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+	return rctx.Formatter.FormatList(os.Stdout, versions, headers, rows)
 }
 
 func newRecipesVersionsCommentCmd() *cobra.Command {

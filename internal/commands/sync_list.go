@@ -94,7 +94,7 @@ that pass --json --verbose get last_synced_at in the emitted objects.`,
 				}
 				tableRows = append(tableRows, row)
 			}
-			return rctx.Formatter.FormatList(os.Stdout, headers, tableRows)
+			return rctx.Formatter.FormatList(os.Stdout, rows, headers, tableRows)
 		},
 	}
 	return cmd

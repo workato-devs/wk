@@ -74,6 +74,9 @@ func newPullCmd() *cobra.Command {
 			}
 
 			if len(allResults) == 0 {
+				if flagJSON {
+					return rctx.Formatter.FormatList(os.Stdout, allResults, nil, nil)
+				}
 				if !rctx.Quiet {
 					fmt.Fprintln(os.Stderr, "No assets to pull.")
 				}
@@ -86,7 +89,7 @@ func newPullCmd() *cobra.Command {
 				row := []string{r.FilePath, r.Action}
 				rows = append(rows, row)
 			}
-			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+			return rctx.Formatter.FormatList(os.Stdout, allResults, headers, rows)
 		},
 	}
 
@@ -220,7 +223,7 @@ reported on stderr (or as folders_created in --json output).`,
 			for _, r := range allResults {
 				rows = append(rows, []string{r.FilePath, r.Action})
 			}
-			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+			return rctx.Formatter.FormatList(os.Stdout, allResults, headers, rows)
 		},
 	}
 
@@ -318,6 +321,9 @@ func newStatusCmd() *cobra.Command {
 			}
 
 			if len(allStatuses) == 0 {
+				if flagJSON {
+					return rctx.Formatter.FormatList(os.Stdout, allStatuses, nil, nil)
+				}
 				if !rctx.Quiet {
 					fmt.Fprintln(os.Stderr, "No synced assets found.")
 				}
@@ -329,7 +335,7 @@ func newStatusCmd() *cobra.Command {
 			for _, s := range allStatuses {
 				rows = append(rows, []string{s.FilePath, string(s.Status), s.ServerPath})
 			}
-			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+			return rctx.Formatter.FormatList(os.Stdout, allStatuses, headers, rows)
 		},
 	}
 
@@ -377,6 +383,9 @@ func newDiffCmd() *cobra.Command {
 			}
 
 			if len(allDiffs) == 0 {
+				if flagJSON {
+					return rctx.Formatter.FormatList(os.Stdout, allDiffs, nil, nil)
+				}
 				if !rctx.Quiet {
 					fmt.Fprintln(os.Stderr, "No differences found.")
 				}
@@ -390,7 +399,7 @@ func newDiffCmd() *cobra.Command {
 				remoteHash := truncateHash(d.RemoteHash)
 				rows = append(rows, []string{d.Path, string(d.Type), localHash, remoteHash})
 			}
-			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+			return rctx.Formatter.FormatList(os.Stdout, allDiffs, headers, rows)
 		},
 	}
 
