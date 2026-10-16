@@ -33,6 +33,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   check. When a duplicate is real, the error now gives the workspace ID and the
   two ways forward: use that profile, or `wk auth delete` it first.
   ([#100](https://github.com/workato-devs/wk/issues/100))
+- `wk plugins install <dir>` can now install only what a plugin needs instead
+  of the whole directory. Run from a source checkout, it copied the entire
+  repo into `~/.wk/plugins/` (852 files, `.git/` included, for `recipe-lint`).
+  `plugin.toml` takes a new optional `files` list, e.g.
+  `files = ["profiles/*.json"]`. When it's present, install copies
+  `plugin.toml`, the entrypoint and those files. A pattern that matches nothing,
+  reaches outside the plugin directory, or a missing entrypoint is an error,
+  and the existing installation is left in place. When it's absent, install
+  copies the whole directory as before and warns, so existing plugins are
+  unaffected. Older `wk` versions ignore the key.
+  `wk plugins install --json` adds `copied_all`.
+  ([#101](https://github.com/workato-devs/wk/issues/101))
 - `wk auth list` now honors `--store-type`. It silently discarded the flag
   and listed keychain profiles with exit 0, so `--store-type file` outside a
   project looked like "no file-store profiles" rather than "no project here".

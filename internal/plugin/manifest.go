@@ -14,12 +14,17 @@ type HookConfig struct {
 
 // Manifest represents a plugin.toml file describing a plugin.
 type Manifest struct {
-	Name        string     `toml:"name"`
-	Version     string     `toml:"version"`
-	Description string     `toml:"description"`
-	Entrypoint  string     `toml:"entrypoint"`
-	Commands    []Command  `toml:"commands"`
-	Hooks       HookConfig `toml:"hooks"`
+	Name        string `toml:"name"`
+	Version     string `toml:"version"`
+	Description string `toml:"description"`
+	Entrypoint  string `toml:"entrypoint"`
+	// Files lists what `wk plugins install` copies besides plugin.toml and
+	// the entrypoint: filepath.Match patterns relative to the plugin root (a
+	// pattern matching a directory copies it). When empty, install copies
+	// the whole source directory and warns (#101).
+	Files    []string   `toml:"files,omitempty"`
+	Commands []Command  `toml:"commands"`
+	Hooks    HookConfig `toml:"hooks"`
 }
 
 // Command is a top-level command exposed by a plugin.
