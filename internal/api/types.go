@@ -455,7 +455,9 @@ type AuditLogEntry struct {
 		Name  string `json:"name"`
 		Email string `json:"email"`
 	} `json:"user"`
-	Details any `json:"details,omitempty"`
+	Resource  any `json:"resource,omitempty"`
+	Workspace any `json:"workspace,omitempty"`
+	Details   any `json:"details,omitempty"`
 }
 
 // AuditLogOptions configures audit log filtering.
