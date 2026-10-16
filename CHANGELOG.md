@@ -19,6 +19,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   only the ten most recently released connectors. The table gains `ID` and
   `RELEASED` columns and drops `DESCRIPTION`, which this endpoint does not return;
   `--json` now includes `id`, `latest_released_version`, and `released_versions`.
+- `wk diff` no longer reports every JSON asset as `modified` right after a
+  `wk clone` or `wk pull`. Pull writes JSON normalized (sorted keys,
+  consistent indentation) and records that hash, but diff hashed the remote
+  package's raw JSON, so the two never matched; non-JSON assets were
+  unaffected. Diff now hashes remote files exactly as pull writes them,
+  through one shared function so the two can't drift apart again. Regression
+  from the #13 fix. ([#102](https://github.com/workato-devs/wk/issues/102))
 
 ## [1.0.3] - 2026-08-01
 
