@@ -485,9 +485,22 @@ type RepeatJobEntry struct {
 	Error  string `json:"error,omitempty"`
 }
 
-// Connector represents a Workato connector (integration).
+// Connector represents a custom SDK connector, as returned by /custom_connectors.
+// LatestReleasedVersion is nil for a connector that has never been released.
 type Connector struct {
-	Name        string `json:"name"`
-	Title       string `json:"title"`
-	Description string `json:"description,omitempty"`
+	ID                        int                        `json:"id"`
+	Name                      string                     `json:"name"`
+	Title                     string                     `json:"title"`
+	LatestReleasedVersion     *int                       `json:"latest_released_version"`
+	LatestReleasedVersionNote string                     `json:"latest_released_version_note,omitempty"`
+	ReleasedVersions          []ConnectorReleasedVersion `json:"released_versions,omitempty"`
+	StaticWebhookURL          string                     `json:"static_webhook_url,omitempty"`
+}
+
+// ConnectorReleasedVersion is one entry in a custom connector's release history.
+type ConnectorReleasedVersion struct {
+	Version     int       `json:"version"`
+	VersionNote string    `json:"version_note,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	ReleasedAt  time.Time `json:"released_at"`
 }

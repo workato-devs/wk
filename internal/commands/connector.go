@@ -1,7 +1,9 @@
 package commands
 
 import (
+	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/spf13/cobra"
 )
@@ -23,7 +25,7 @@ func newConnectorsListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List custom SDK connectors",
 		Example: `  wk connectors list
-  wk connectors list --search salesforce --json`,
+  wk connectors list --search taxonomy --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
 			if err != nil {
@@ -43,15 +45,19 @@ func newConnectorsListCmd() *cobra.Command {
 				return rctx.Formatter.Format(os.Stdout, connectors)
 			}
 
-			headers := []string{"NAME", "TITLE", "DESCRIPTION"}
+			headers := []string{"ID", "NAME", "TITLE", "RELEASED"}
 			var rows [][]string
 			for _, c := range connectors {
-				rows = append(rows, []string{c.Name, c.Title, c.Description})
+				released := "never"
+				if c.LatestReleasedVersion != nil {
+					released = fmt.Sprintf("v%d", *c.LatestReleasedVersion)
+				}
+				rows = append(rows, []string{strconv.Itoa(c.ID), c.Name, c.Title, released})
 			}
 			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
 		},
 	}
 
-	cmd.Flags().StringVar(&search, "search", "", "Search custom SDK connectors")
+	cmd.Flags().StringVar(&search, "search", "", "Filter by name or title (case-insensitive substring)")
 	return cmd
 }
