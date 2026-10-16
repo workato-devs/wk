@@ -11,19 +11,22 @@ import (
 
 // hasDuplicateTarget checks whether any existing profile (with a different
 // name) already targets the same (workspace, environment, region) tuple.
-// Profiles with empty workspace or environment are skipped (backward compat).
+// Workspaces are compared by ID, not display name: separate workspaces can
+// share a name (#100), and one workspace keeps its ID across renames.
+// Profiles with no workspace ID or environment are skipped (backward compat:
+// profiles saved before workspace_id was recorded).
 func hasDuplicateTarget(profiles []*Profile, p *Profile) *Profile {
-	if p.Workspace == "" || p.Environment == "" {
+	if p.WorkspaceID == 0 || p.Environment == "" {
 		return nil
 	}
 	for _, existing := range profiles {
 		if existing.Name == p.Name {
 			continue
 		}
-		if existing.Workspace == "" || existing.Environment == "" {
+		if existing.WorkspaceID == 0 || existing.Environment == "" {
 			continue
 		}
-		if existing.Workspace == p.Workspace &&
+		if existing.WorkspaceID == p.WorkspaceID &&
 			existing.Environment == p.Environment &&
 			existing.Region == p.Region {
 			return existing
@@ -86,8 +89,8 @@ func (pm *ProfileManager) SaveProfile(p *Profile) error {
 	}
 
 	if dup := hasDuplicateTarget(profiles, p); dup != nil {
-		return fmt.Errorf("%w: profile %q already targets %s/%s (%s)",
-			wkerrors.ErrDuplicateTarget, dup.Name, dup.Workspace, dup.Environment, dup.Region)
+		return fmt.Errorf("%w: profile %q already targets %s (workspace ID %d)/%s (%s); use that profile (--profile %s), or delete it first: wk auth delete %s",
+			wkerrors.ErrDuplicateTarget, dup.Name, dup.Workspace, dup.WorkspaceID, dup.Environment, dup.Region, dup.Name, dup.Name)
 	}
 
 	found := false

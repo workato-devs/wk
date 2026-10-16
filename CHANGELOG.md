@@ -23,6 +23,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `workspace` objects, as returned by `GET /api/activity_logs`. They were
   dropped while decoding the response because the struct didn't model them.
   The table is unchanged. ([#103](https://github.com/workato-devs/wk/issues/103))
+- `wk auth login` no longer rejects a new profile because another profile's
+  workspace has the same display name. The duplicate check compared workspace
+  names from `GET /users/me`, and separate workspaces can share one (for
+  example, several trial workspaces under one account), so the second
+  workspace couldn't be added and `--force` didn't help. It now compares
+  workspace IDs, which also catches the same workspace saved again after a
+  rename. Profiles saved before workspace IDs were recorded are skipped by the
+  check. When a duplicate is real, the error now gives the workspace ID and the
+  two ways forward: use that profile, or `wk auth delete` it first.
+  ([#100](https://github.com/workato-devs/wk/issues/100))
+- `wk auth login` no longer leaves a profile with no token behind when the
+  token can't be stored in the OS keychain. The profile was saved first and
+  kept even when the keychain write failed, so later commands found a profile
+  but no credential. Now a new profile is removed and an overwritten one is
+  restored. The error, previously just `storing credential: exit status 154`,
+  now says that the keychain write failed, whether the profile was left
+  unchanged or not saved, and that `--store-type file` keeps the token in a
+  project file instead.
 - `wk diff` no longer reports every JSON asset as `modified` right after a
   `wk clone` or `wk pull`. Pull writes JSON normalized (sorted keys,
   consistent indentation) and records that hash, but diff hashed the remote

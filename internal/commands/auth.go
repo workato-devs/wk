@@ -246,13 +246,18 @@ requires --token and --environment explicitly. See ADR-006.`,
 				profile.StoreType = auth.StoreKeychain
 				cred.StoreType = auth.StoreKeychain
 
+				// Saved before the token so the duplicate-target check runs
+				// before anything touches the keychain; rolled back below if
+				// the token can't be stored, so a failed login never leaves a
+				// profile with no token behind.
+				previous, _ := pm.GetProfile(name)
 				if err := pm.SaveProfile(profile); err != nil {
 					return fmt.Errorf("saving profile: %w", err)
 				}
 
 				store := &auth.KeyringStore{}
 				if err := store.Set(cmd.Context(), name, cred); err != nil {
-					return fmt.Errorf("storing credential: %w", err)
+					return keychainSetError(pm, name, previous, err)
 				}
 
 				if err := pm.SetActiveProfile(name); err != nil {
@@ -577,6 +582,26 @@ func newAuthListCmd() *cobra.Command {
 
 // profileRow formats one auth-list row. When shadowed is true, the name is
 // annotated to show that keychain routing would shadow this file-store entry.
+// keychainSetError rolls back a profile saved just before its token failed to
+// reach the OS keychain (restoring the previous profile of that name, if any),
+// and returns an error that says what happened and how to proceed.
+func keychainSetError(pm *auth.ProfileManager, name string, previous *auth.Profile, setErr error) error {
+	var rollbackErr error
+	state := "was not saved"
+	if previous != nil {
+		rollbackErr = pm.SaveProfile(previous)
+		state = "was left unchanged"
+	} else {
+		rollbackErr = pm.DeleteProfile(name)
+	}
+	if rollbackErr != nil {
+		return fmt.Errorf("storing the token in the OS keychain failed (%v), and restoring profile %q also failed (%v); it may have no token: rerun wk auth login, or remove it with: wk auth delete %s",
+			setErr, name, rollbackErr, name)
+	}
+	return fmt.Errorf("storing the token in the OS keychain failed (%v), so profile %q %s. To keep the token in a project file instead, rerun with --store-type file",
+		setErr, name, state)
+}
+
 // profileListItem is one `wk auth list --json` entry: the profile plus the
 // two facts the table shows as decorations ("*" and "(shadowed)").
 type profileListItem struct {
