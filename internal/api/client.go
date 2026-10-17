@@ -143,6 +143,7 @@ type GenieClientService interface {
 	Update(ctx context.Context, id string, in GenieClientUpdate) error
 	Delete(ctx context.Context, id string) error
 	Regenerate(ctx context.Context, id string) (*GenieClientKey, error)
+	SetActive(ctx context.Context, id string, active bool) (*GenieClient, error)
 	Attach(ctx context.Context, genieID, clientID string) (*GenieClientAttachment, error)
 	Detach(ctx context.Context, genieID, clientID string) error
 }

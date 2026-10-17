@@ -223,6 +223,8 @@ func TestGenieClientService_Writes(t *testing.T) {
 		case r.Method == "POST" && r.URL.Path == "/agentic/genies/clients":
 			w.WriteHeader(http.StatusCreated)
 			w.Write([]byte(`{"data":{"client_id":"gincl-1","type":"api_key","genie_ids":[],"api_key":"k"}}`))
+		case strings.HasSuffix(r.URL.Path, "/pause"):
+			w.Write([]byte(`{"data":{"client_id":"gincl-1","status":"inactive","genie_ids":["gin-1"]}}`))
 		case strings.HasSuffix(r.URL.Path, "/regenerate"):
 			w.Write([]byte(`{"data":{"api_key":"k2","updated_at":"2026-10-17T12:17:22-07:00"}}`))
 		case r.Method == "POST":
@@ -247,6 +249,10 @@ func TestGenieClientService_Writes(t *testing.T) {
 	if err != nil || key.APIKey != "k2" || key.UpdatedAt.IsZero() {
 		t.Fatalf("regenerate = %+v, %v", key, err)
 	}
+	paused, err := cs.SetActive(ctx, "gincl-1", false)
+	if err != nil || paused.Status != "inactive" {
+		t.Fatalf("pause = %+v, %v", paused, err)
+	}
 	a, err := cs.Attach(ctx, "gin-1", "gincl-1")
 	if err != nil || a.GenieID != "gin-1" {
 		t.Fatalf("attach = %+v, %v", a, err)
@@ -258,6 +264,7 @@ func TestGenieClientService_Writes(t *testing.T) {
 		{"POST", "/agentic/genies/clients", `{"client_name":"N","auth":{"type":"api_key"}}`},
 		{"PUT", "/agentic/genies/clients/gincl-1", `{"client_name":"N","ip_allow_list":[]}`},
 		{"POST", "/agentic/genies/clients/gincl-1/regenerate", ""},
+		{"POST", "/agentic/genies/clients/gincl-1/pause", ""},
 		{"POST", "/agentic/genies/gin-1/clients", `{"genie_client_id":"gincl-1"}`},
 		{"DELETE", "/agentic/genies/gin-1/clients/gincl-1", ""},
 		{"DELETE", "/agentic/genies/clients/gincl-1", ""},

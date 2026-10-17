@@ -20,7 +20,8 @@ import (
 
 func addGenieClientWriteCmds(cmd *cobra.Command) {
 	cmd.AddCommand(newClientGetCmd(), newClientCreateCmd(), newClientUpdateCmd(), newClientDeleteCmd(),
-		newClientRegenerateCmd(), newClientAttachCmd(), newClientDetachCmd())
+		newClientRegenerateCmd(), newClientStateCmd(true), newClientStateCmd(false),
+		newClientAttachCmd(), newClientDetachCmd())
 }
 
 var clientTypes = []string{"api_key", "oauth"}
@@ -285,6 +286,43 @@ OAuth clients have no key to regenerate.`,
 			}
 			fmt.Fprintf(os.Stderr, "Regenerated the key for genie client %s; the old key no longer works.\n", args[0])
 			printAPIKey(key.APIKey)
+			return nil
+		},
+	}
+}
+
+// newClientStateCmd builds start (active) or pause. The API returns the
+// client, and the command fails if its status isn't the expected one.
+func newClientStateCmd(active bool) *cobra.Command {
+	verb, want, short := "pause", "inactive", "Pause a genie client"
+	long := `Stop a client from calling its genie without deleting or detaching it. The
+API reports a paused client's status as inactive. Resume it with
+wk agentic clients start.`
+	if active {
+		verb, want, short = "start", "active", "Start (resume) a paused genie client"
+		long = "Let a paused client call its genie again. Its status becomes active."
+	}
+	return &cobra.Command{
+		Use:     verb + " <client-id>",
+		Short:   short,
+		Long:    long,
+		Example: fmt.Sprintf("  wk agentic clients %s gincl-Abr3xKBY-QaFbd9-AB", verb),
+		Args:    requireArgs(1, fmt.Sprintf("client ID is required, e.g.: wk agentic clients %s <client-id>", verb)),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rctx, client, err := agenticContext(cmd)
+			if err != nil {
+				return err
+			}
+			c, err := client.GenieClients().SetActive(cmd.Context(), args[0], active)
+			if err != nil {
+				return err
+			}
+			if err := printClient(rctx, c, fmt.Sprintf("Genie client %s is now %s", c.ClientID, c.Status)); err != nil {
+				return err
+			}
+			if c.Status != want {
+				return fmt.Errorf("%s returned success, but the client's status is %q, not %q", verb, c.Status, want)
+			}
 			return nil
 		},
 	}

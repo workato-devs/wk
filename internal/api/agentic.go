@@ -203,6 +203,23 @@ func (s *genieClientService) Regenerate(ctx context.Context, id string) (*GenieC
 	return &result.Data, nil
 }
 
+// SetActive starts (active true) or pauses a client and returns it as the
+// API now reports it. Status becomes "active" or "inactive"; a paused client
+// stays attached to its genie. Repeating either call is harmless.
+func (s *genieClientService) SetActive(ctx context.Context, id string, active bool) (*GenieClient, error) {
+	verb := "pause"
+	if active {
+		verb = "start"
+	}
+	var result struct {
+		Data GenieClient `json:"data"`
+	}
+	if err := s.client.do(ctx, "POST", "/agentic/genies/clients/"+url.PathEscape(id)+"/"+verb, nil, &result); err != nil {
+		return nil, err
+	}
+	return &result.Data, nil
+}
+
 // Attach attaches a client to a genie. A client already attached anywhere,
 // including to this genie, gets a 409.
 func (s *genieClientService) Attach(ctx context.Context, genieID, clientID string) (*GenieClientAttachment, error) {
