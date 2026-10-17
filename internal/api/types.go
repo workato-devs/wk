@@ -399,8 +399,9 @@ type KnowledgeBase struct {
 	UpdatedAt          Timestamp       `json:"updated_at"`
 }
 
-// GenieClient is a runtime credential for the genie Headless API. A genie has
-// at most one client.
+// GenieClient is a runtime credential for the genie Headless API. A client
+// serves at most one genie; a genie can have several clients (the reference
+// says the reverse; verified 2026-10-17).
 type GenieClient struct {
 	ClientID    string    `json:"client_id"`
 	ClientName  string    `json:"client_name"`
@@ -410,6 +411,30 @@ type GenieClient struct {
 	GenieIDs    []string  `json:"genie_ids"`
 	IPAllowList []string  `json:"ip_allow_list"`
 	ActivatedAt Timestamp `json:"activated_at"`
+	// OAuth clients only, and only from get and create; list omits both.
+	OAuthClientID     string   `json:"oauth_client_id,omitempty"`
+	OAuthRedirectURLs []string `json:"oauth_redirect_url,omitempty"` // get only
+}
+
+// GenieClientCreated is a new client. APIKey is sent only here and by
+// regenerate, and only for api_key clients.
+type GenieClientCreated struct {
+	GenieClient
+	APIKey string `json:"api_key,omitempty"`
+}
+
+// GenieClientKey is a regenerated API key. The previous key stops working.
+type GenieClientKey struct {
+	APIKey    string    `json:"api_key"`
+	UpdatedAt Timestamp `json:"updated_at"`
+}
+
+// GenieClientAttachment is what attaching a client to a genie returns.
+type GenieClientAttachment struct {
+	GenieID    string `json:"genie_id"`
+	ClientID   string `json:"client_id"`
+	ClientName string `json:"client_name"`
+	Status     string `json:"status"`
 }
 
 // Guardrail is a genie's content-safety configuration. ID is null when no

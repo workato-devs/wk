@@ -133,6 +133,96 @@ func (s *genieClientService) List(ctx context.Context, opts *PaginationOptions) 
 	return result.Data, result.OffsetPage, nil
 }
 
+// Get returns one client. The endpoint is undocumented but answers; for OAuth
+// clients it adds the OAuth client ID and redirect URLs that list leaves out.
+func (s *genieClientService) Get(ctx context.Context, id string) (*GenieClient, error) {
+	var result struct {
+		Data GenieClient `json:"data"`
+	}
+	if err := s.client.do(ctx, "GET", "/agentic/genies/clients/"+url.PathEscape(id), nil, &result); err != nil {
+		return nil, err
+	}
+	return &result.Data, nil
+}
+
+// GenieClientCreate is the body of a client create. IPAllowList is
+// undocumented but applied.
+type GenieClientCreate struct {
+	ClientName  string          `json:"client_name"`
+	Auth        GenieClientAuth `json:"auth"`
+	IPAllowList []string        `json:"ip_allow_list,omitempty"`
+}
+
+type GenieClientAuth struct {
+	Type             string `json:"type"`                         // "api_key" or "oauth"
+	OAuthRedirectURL string `json:"oauth_redirect_url,omitempty"` // required for oauth
+}
+
+// GenieClientUpdate is the body of a client update. Nil fields aren't sent; a
+// non-nil empty list is sent as [] and clears it. Only ClientName is
+// documented; the API also applies the other two, and silently ignores
+// OAuthRedirectURLs on an api_key client.
+type GenieClientUpdate struct {
+	ClientName        *string   `json:"client_name,omitempty"`
+	IPAllowList       *[]string `json:"ip_allow_list,omitempty"`
+	OAuthRedirectURLs *[]string `json:"oauth_redirect_url,omitempty"`
+}
+
+// Create returns the new client with its secret: an api_key client's key is
+// sent only here and by Regenerate.
+func (s *genieClientService) Create(ctx context.Context, in GenieClientCreate) (*GenieClientCreated, error) {
+	var result struct {
+		Data GenieClientCreated `json:"data"`
+	}
+	if err := s.client.do(ctx, "POST", "/agentic/genies/clients", in, &result); err != nil {
+		return nil, err
+	}
+	return &result.Data, nil
+}
+
+// Update changes the set fields. The API returns no body.
+func (s *genieClientService) Update(ctx context.Context, id string, in GenieClientUpdate) error {
+	return s.client.do(ctx, "PUT", "/agentic/genies/clients/"+url.PathEscape(id), in, nil)
+}
+
+// Delete removes a client and invalidates its credentials. It succeeds even
+// while the client is attached to a running genie.
+func (s *genieClientService) Delete(ctx context.Context, id string) error {
+	return s.client.do(ctx, "DELETE", "/agentic/genies/clients/"+url.PathEscape(id), nil, nil)
+}
+
+// Regenerate replaces an api_key client's key; the old one stops working.
+// OAuth clients get a 422.
+func (s *genieClientService) Regenerate(ctx context.Context, id string) (*GenieClientKey, error) {
+	var result struct {
+		Data GenieClientKey `json:"data"`
+	}
+	if err := s.client.do(ctx, "POST", "/agentic/genies/clients/"+url.PathEscape(id)+"/regenerate", nil, &result); err != nil {
+		return nil, err
+	}
+	return &result.Data, nil
+}
+
+// Attach attaches a client to a genie. A client already attached anywhere,
+// including to this genie, gets a 409.
+func (s *genieClientService) Attach(ctx context.Context, genieID, clientID string) (*GenieClientAttachment, error) {
+	var result struct {
+		Data GenieClientAttachment `json:"data"`
+	}
+	body := map[string]string{"genie_client_id": clientID}
+	if err := s.client.do(ctx, "POST", "/agentic/genies/"+url.PathEscape(genieID)+"/clients", body, &result); err != nil {
+		return nil, err
+	}
+	return &result.Data, nil
+}
+
+// Detach removes a client from a genie without deleting it. A client that
+// isn't attached to that genie gets a 404.
+func (s *genieClientService) Detach(ctx context.Context, genieID, clientID string) error {
+	path := fmt.Sprintf("/agentic/genies/%s/clients/%s", url.PathEscape(genieID), url.PathEscape(clientID))
+	return s.client.do(ctx, "DELETE", path, nil, nil)
+}
+
 type guardrailService struct{ client *HTTPClient }
 
 func (s *guardrailService) Get(ctx context.Context, genieID string) (*Guardrail, error) {

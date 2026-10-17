@@ -211,3 +211,63 @@ func TestKnowledgeBaseService_Writes(t *testing.T) {
 		}
 	}
 }
+
+func TestGenieClientService_Writes(t *testing.T) {
+	type call struct{ method, path, body string }
+	var calls []call
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		calls = append(calls, call{r.Method, r.URL.Path, string(b)})
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == "POST" && r.URL.Path == "/agentic/genies/clients":
+			w.WriteHeader(http.StatusCreated)
+			w.Write([]byte(`{"data":{"client_id":"gincl-1","type":"api_key","genie_ids":[],"api_key":"k"}}`))
+		case strings.HasSuffix(r.URL.Path, "/regenerate"):
+			w.Write([]byte(`{"data":{"api_key":"k2","updated_at":"2026-10-17T12:17:22-07:00"}}`))
+		case r.Method == "POST":
+			w.WriteHeader(http.StatusCreated)
+			w.Write([]byte(`{"data":{"genie_id":"gin-1","client_id":"gincl-1","client_name":"N","status":"active"}}`))
+		default:
+			w.Write([]byte(`{"data":null}`))
+		}
+	}))
+	defer srv.Close()
+	cs := NewHTTPClient(srv.URL, "tok").GenieClients()
+	ctx := context.Background()
+	name := "N"
+
+	c, err := cs.Create(ctx, GenieClientCreate{ClientName: "N", Auth: GenieClientAuth{Type: "api_key"}})
+	if err != nil || c.ClientID != "gincl-1" || c.APIKey != "k" {
+		t.Fatalf("create = %+v, %v", c, err)
+	}
+	// An empty, non-nil list is sent as [] so it clears; nil fields aren't sent.
+	cs.Update(ctx, "gincl-1", GenieClientUpdate{ClientName: &name, IPAllowList: &[]string{}})
+	key, err := cs.Regenerate(ctx, "gincl-1")
+	if err != nil || key.APIKey != "k2" || key.UpdatedAt.IsZero() {
+		t.Fatalf("regenerate = %+v, %v", key, err)
+	}
+	a, err := cs.Attach(ctx, "gin-1", "gincl-1")
+	if err != nil || a.GenieID != "gin-1" {
+		t.Fatalf("attach = %+v, %v", a, err)
+	}
+	cs.Detach(ctx, "gin-1", "gincl-1")
+	cs.Delete(ctx, "gincl-1")
+
+	want := []call{
+		{"POST", "/agentic/genies/clients", `{"client_name":"N","auth":{"type":"api_key"}}`},
+		{"PUT", "/agentic/genies/clients/gincl-1", `{"client_name":"N","ip_allow_list":[]}`},
+		{"POST", "/agentic/genies/clients/gincl-1/regenerate", ""},
+		{"POST", "/agentic/genies/gin-1/clients", `{"genie_client_id":"gincl-1"}`},
+		{"DELETE", "/agentic/genies/gin-1/clients/gincl-1", ""},
+		{"DELETE", "/agentic/genies/clients/gincl-1", ""},
+	}
+	if len(calls) != len(want) {
+		t.Fatalf("calls = %+v", calls)
+	}
+	for i := range want {
+		if calls[i] != want[i] {
+			t.Errorf("call %d = %+v, want %+v", i, calls[i], want[i])
+		}
+	}
+}

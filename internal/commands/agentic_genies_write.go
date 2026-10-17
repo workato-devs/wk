@@ -171,6 +171,7 @@ func newGenieDeleteCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "delete <id>",
 		Short:   "Delete a genie",
+		Long:    "Delete a genie. This also deletes the Headless API clients attached to it, so their credentials stop working; to keep a client, detach it first with wk agentic clients detach.",
 		Example: `  wk agentic genies delete gin-AbzGALWh-9h9Q9W-AB`,
 		Args:    requireArgs(1, "genie ID is required, e.g.: wk agentic genies delete <id>"),
 		RunE: func(cmd *cobra.Command, args []string) error {

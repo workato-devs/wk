@@ -150,13 +150,13 @@ func newKBDataSourcesCmd() *cobra.Command {
 func newGenieClientsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "clients",
-		Short: "Read genie Headless API clients",
+		Short: "Manage genie Headless API clients",
 	}
 	var page, perPage int
 	list := &cobra.Command{
 		Use:     "list",
 		Short:   "List genie clients",
-		Long:    "List the runtime credentials (API key or OAuth) used with the genie Headless API. A genie has at most one client.",
+		Long:    "List the runtime credentials (API key or OAuth) used with the genie Headless API. A client serves at most one genie; a genie can have several clients.",
 		Example: `  wk agentic clients list --json`,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -181,6 +181,7 @@ func newGenieClientsCmd() *cobra.Command {
 	}
 	addPageFlags(list, &page, &perPage, 0)
 	cmd.AddCommand(list)
+	addGenieClientWriteCmds(cmd)
 	return cmd
 }
 

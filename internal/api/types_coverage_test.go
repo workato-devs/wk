@@ -238,7 +238,18 @@ func TestStructFieldCoverage(t *testing.T) {
 			expectedFields: []string{
 				"client_id", "client_name", "type", "status", "base_host",
 				"genie_ids", "ip_allow_list", "activated_at",
+				"oauth_client_id", "oauth_redirect_url",
 			},
+		},
+		{
+			name:           "GenieClientKey",
+			structType:     reflect.TypeOf(GenieClientKey{}),
+			expectedFields: []string{"api_key", "updated_at"},
+		},
+		{
+			name:           "GenieClientAttachment",
+			structType:     reflect.TypeOf(GenieClientAttachment{}),
+			expectedFields: []string{"genie_id", "client_id", "client_name", "status"},
 		},
 		{
 			name:           "Guardrail",

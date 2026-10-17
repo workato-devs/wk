@@ -106,6 +106,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and `--json` lists the genies it was detached from. Data sources for Matrix
   knowledge bases can't be set: the API accepts them but didn't apply any we
   tried.
+- Genie client commands: `wk agentic clients get|create|update|delete|
+  regenerate|attach|detach`. A client serves at most one genie, and a genie
+  can have several clients (Workato's reference says the reverse).
+  - `create` takes `--name`, `--type` (`api_key`, the default, or `oauth` with
+    `--redirect-url`) and `--ip-allow-list`. `create` and `regenerate` print an
+    `api_key` client's key, which the API returns only then; `regenerate`
+    makes the old key stop working at once.
+  - `update` changes `--name`, `--ip-allow-list` (replaces the list;
+    `--clear-ip-allow-list` removes every restriction) and, for OAuth clients,
+    `--redirect-url`, then re-reads the client to confirm the change took.
+  - `get` adds the OAuth client ID and redirect URLs that `list` leaves out.
+  - `attach` reports `already_attached` (exit 0) for a client already on that
+    genie. A client on another genie gets an error naming that genie and the
+    `detach` command, in place of the API's bare `409`.
+  - **`delete` refuses a client that's attached to a genie**, because the API
+    deletes it anyway and its credentials stop working while the genie runs;
+    `--force` deletes it, and `detach` keeps it.
+- `wk agentic genies delete --help` now says that deleting a genie also
+  deletes the clients attached to it.
 - A global `--raw` flag prints the Workato API's response body verbatim
   instead of `wk`'s JSON. `--json` is `wk`'s modeled output and includes only
   the fields `wk` models (`wk connections list --json` shows 8 fields per

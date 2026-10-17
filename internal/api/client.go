@@ -135,9 +135,16 @@ type KnowledgeBaseService interface {
 	Delete(ctx context.Context, id string) error
 }
 
-// GenieClientService defines read operations on genie Headless API clients.
+// GenieClientService defines operations on genie Headless API clients.
 type GenieClientService interface {
 	List(ctx context.Context, opts *PaginationOptions) ([]GenieClient, OffsetPage, error)
+	Get(ctx context.Context, id string) (*GenieClient, error)
+	Create(ctx context.Context, in GenieClientCreate) (*GenieClientCreated, error)
+	Update(ctx context.Context, id string, in GenieClientUpdate) error
+	Delete(ctx context.Context, id string) error
+	Regenerate(ctx context.Context, id string) (*GenieClientKey, error)
+	Attach(ctx context.Context, genieID, clientID string) (*GenieClientAttachment, error)
+	Detach(ctx context.Context, genieID, clientID string) error
 }
 
 // GuardrailService defines read operations on genie guardrails (beta).
