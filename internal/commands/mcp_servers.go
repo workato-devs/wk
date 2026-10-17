@@ -362,7 +362,16 @@ func newMCPServersTokenRenewCmd() *cobra.Command {
 		Use:   "token-renew <handle>",
 		Short: "Renew the authentication token for an MCP server",
 		Long: `Renew the authentication token, generating a new MCP URL with a fresh token.
-The new URL is printed to stdout. The previous token is immediately invalidated.`,
+The previous token is immediately invalidated, so every client using it stops
+working.
+
+For servers using the "token" authentication method, the new URL, including
+its token, is printed to stdout.
+
+For servers using "hashed_token" (the default for new servers), Workato does
+not return the new token: the printed URL has no token and won't connect.
+Copy the new URL from the server's page in the Workato UI. Check a server's
+method with: wk mcp servers list --json (authentication_method).`,
 		Example: `  wk mcp servers token-renew mcps-AYcNrsC8-Dd8-AB
   wk mcp servers token-renew mcps-AYcNrsC8-Dd8-AB --json`,
 		Args: requireArgs(1, "server handle is required, e.g.: wk mcp servers token-renew <handle>"),

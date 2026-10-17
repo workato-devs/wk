@@ -340,6 +340,9 @@ type MCPTool struct {
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"inputSchema"`
 	Annotations map[string]any `json:"annotations,omitempty"`
+	// Meta is the tool's _meta object (e.g. AIRO's "workato.com/tool_type"
+	// category). It is not a safety signal.
+	Meta map[string]any `json:"_meta,omitempty"`
 }
 
 // MCPManagedServer is the full detail shape from GET /api/mcp/mcp_servers/:handle.

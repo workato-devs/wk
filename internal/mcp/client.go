@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ type Client struct {
 	url        string
 	httpClient *http.Client
 	sessionID  string
+	bearer     string
 }
 
 // NewClient creates a new MCP client for the given server URL.
@@ -27,6 +29,36 @@ func NewClient(url string) *Client {
 		url:        url,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
+}
+
+// WithBearer makes the client send token as an Authorization bearer header,
+// for first-party endpoints such as airo_mcp that take a header rather than a
+// URL-embedded credential (ADR-008 Decision 3). Callers decide which hosts may
+// receive it.
+func (c *Client) WithBearer(token string) *Client {
+	c.bearer = token
+	return c
+}
+
+// HTTPError is a non-2xx response from an MCP server. It keeps the body and
+// any WWW-Authenticate challenge, which say why (e.g. the OAuth discovery
+// document for a 401).
+type HTTPError struct {
+	StatusCode      int
+	Status          string
+	Body            string
+	WWWAuthenticate string
+}
+
+func (e *HTTPError) Error() string {
+	msg := "HTTP " + e.Status
+	if e.Body != "" {
+		msg += ": " + e.Body
+	}
+	if e.WWWAuthenticate != "" {
+		msg += " (WWW-Authenticate: " + e.WWWAuthenticate + ")"
+	}
+	return msg
 }
 
 type jsonRPCRequest struct {
@@ -81,6 +113,11 @@ func (c *Client) Initialize(ctx context.Context) (*api.MCPServerInfo, error) {
 		return nil, fmt.Errorf("parsing initialize result: %w", err)
 	}
 
+	// The MCP lifecycle requires this notification before any other request.
+	if err := c.notify(ctx, "notifications/initialized"); err != nil {
+		return nil, fmt.Errorf("notifications/initialized: %w", err)
+	}
+
 	return &api.MCPServerInfo{
 		Name:            result.ServerInfo.Name,
 		Version:         result.ServerInfo.Version,
@@ -113,8 +150,20 @@ func (c *Client) ListTools(ctx context.Context) ([]api.MCPTool, error) {
 	return result.Tools, nil
 }
 
-func (c *Client) send(ctx context.Context, rpcReq jsonRPCRequest) (*jsonRPCResponse, error) {
-	body, err := json.Marshal(rpcReq)
+// notify sends a JSON-RPC notification (no id, no response expected).
+func (c *Client) notify(ctx context.Context, method string) error {
+	resp, err := c.post(ctx, map[string]any{"jsonrpc": "2.0", "method": method})
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
+// post sends a JSON-RPC message and returns the response for any 2xx status;
+// non-2xx statuses become an *HTTPError.
+func (c *Client) post(ctx context.Context, msg any) (*http.Response, error) {
+	body, err := json.Marshal(msg)
 	if err != nil {
 		return nil, err
 	}
@@ -130,20 +179,38 @@ func (c *Client) send(ctx context.Context, rpcReq jsonRPCRequest) (*jsonRPCRespo
 	if c.sessionID != "" {
 		req.Header.Set("Mcp-Session-Id", c.sessionID)
 	}
+	if c.bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+c.bearer)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
 	if sid := resp.Header.Get("Mcp-Session-Id"); sid != "" {
 		c.sessionID = sid
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("HTTP %d %s", resp.StatusCode, resp.Status)
+		defer resp.Body.Close()
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, &HTTPError{
+			StatusCode:      resp.StatusCode,
+			Status:          resp.Status,
+			Body:            strings.TrimSpace(string(snippet)),
+			WWWAuthenticate: resp.Header.Get("WWW-Authenticate"),
+		}
 	}
+	return resp, nil
+}
+
+func (c *Client) send(ctx context.Context, rpcReq jsonRPCRequest) (*jsonRPCResponse, error) {
+	resp, err := c.post(ctx, rpcReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
 
 	contentType := resp.Header.Get("Content-Type")
 

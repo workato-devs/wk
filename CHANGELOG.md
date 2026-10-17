@@ -6,8 +6,74 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `wk mcp connect airo` sets up any MCP client's connection to Workato AIRO
+  MCP. `wk` isn't involved in any request after that, and never writes a
+  credential into a client's config.
+  - Without `--client`, it prints the connection details in a client-neutral
+    form any MCP client can use: the server URL, how each authentication
+    option works and who it acts as, which workspace to sign in to, and the
+    commands that supply a token. `--json` gives the same structure.
+  - `--client claude-code` and `--client codex` install the server through
+    those clients' own CLIs (`claude mcp add-json`, `codex mcp add`).
+    `--client cursor` prints the exact `~/.cursor/mcp.json` (or project
+    `.cursor/mcp.json`) entry instead of installing it, because `cursor
+    --add-mcp` writes a settings file Cursor's agent doesn't read servers
+    from. An unknown client gets the neutral details. `--print` shows a
+    client's config without installing it; `--force` replaces an existing
+    server. `--config-scope` (`local`, `user`, `project`) is where the client
+    saves the entry on your machine; `project` is meant to be committed.
+  - `--auth oauth` (the default) writes only the server URL. The client
+    registers itself, you authorize in the browser, and it then acts as the
+    user who authorized. OAuth connects to whichever workspace the browser is
+    signed in to, so `wk` names the profile's workspace and environment to
+    sign in to first. `wk` checks whether the region's authorization server
+    supports client registration. Developer Sandbox (trial) doesn't, so there
+    `wk` refuses OAuth and points to `--auth token` rather than writing a
+    config that can't sign in. **The OAuth path follows Workato's documented
+    setup but hasn't been verified end to end by the `wk` team**, since no
+    production workspace was available; reports are welcome.
+  - `--auth token` gives the client the profile's API token without copying
+    it: Claude Code runs `wk mcp auth-header` to get it, and Codex and Cursor
+    read it from an environment variable (default `WORKATO_API_TOKEN`) you set
+    from `wk auth token`. A token acts as the **workspace owner**, unrestricted
+    by role or project access, so it's opt-in only and never a fallback. Claude
+    Code runs the header helper only after you've accepted its trust prompt for
+    the folder, so open Claude Code there once before headless use.
+  - `wk mcp connect <mcps-handle>` does the same for a managed MCP server, and
+    the server's authentication method decides how the client signs in.
+    `workato_idp` servers get a URL-only entry, and you sign in as your Workato
+    Identity user. `token` servers have the credential in their URL, so `wk`
+    writes it into a client config only with `--allow-url-token`, never at
+    `project` config scope, and otherwise shows the token as `REDACTED`.
+    `hashed_token` servers (the default for new ones) can't be configured
+    automatically, because Workato doesn't return their token, so `--print`
+    gives the entry with a placeholder for the URL from the Workato UI.
+- `wk mcp auth-header` prints `{"Authorization":"Bearer <token>"}` for a
+  profile, for MCP clients that run a command to get request headers.
+- `wk mcp tools` and `wk mcp test` take `--bearer`, which sends the active
+  profile's API token as a bearer header, so they can reach first-party
+  Workato MCP endpoints such as AIRO MCP (`https://app.<region>.workato.com/airo_mcp`).
+  It's sent only to https Workato hosts; any other URL is refused before the
+  token is read.
+
+### Changed
+
+- MCP connection errors now include the server's response body and its
+  `WWW-Authenticate` challenge. A `401` from a Workato endpoint that wants a
+  bearer token says to rerun with `--bearer`, and a rejected token names the
+  profile. The MCP client also sends `notifications/initialized` after the
+  handshake, as the MCP spec requires, and `wk mcp tools --json` keeps each
+  tool's `_meta`.
+
 ### Fixed
 
+- `wk mcp servers token-renew --help` no longer says the new URL is printed in
+  every case. For `hashed_token` servers (the default for new servers), Workato
+  doesn't return the new token: the printed URL has none and won't connect,
+  while the old token has already stopped working. The help now says so and
+  points to the Workato UI.
 - `wk connectors list` now lists the workspace's custom SDK connectors. It was
   calling `GET /integrations`, which is a lookup of built-in platform connector
   metadata by name: with no `?applications=` it returns `{"items": []}` and HTTP
