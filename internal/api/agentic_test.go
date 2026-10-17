@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -163,5 +164,50 @@ func TestConversationService(t *testing.T) {
 	}
 	if events[1].Data == nil || *events[1].Data != `{"message":"hi"}` || events[1].RequestID != "q1" {
 		t.Errorf("agent message = %+v", events[1])
+	}
+}
+
+func TestKnowledgeBaseService_Writes(t *testing.T) {
+	type call struct{ method, path, body string }
+	var calls []call
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		calls = append(calls, call{r.Method, r.URL.Path, string(b)})
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == "POST" {
+			w.WriteHeader(http.StatusCreated)
+			w.Write([]byte(`{"data":{"id":"kb-new","name":"N","source_type":"matrix","folder_id":7,"genies":[]}}`))
+			return
+		}
+		w.Write([]byte(`{"data":null}`))
+	}))
+	defer srv.Close()
+	kbs := NewHTTPClient(srv.URL, "tok").KnowledgeBases()
+	ctx := context.Background()
+	name, folder, src := "N", "7", "matrix"
+
+	// Create returns the whole object, unlike genie create.
+	kb, err := kbs.Create(ctx, KBInput{Name: &name, FolderID: &folder, SourceType: &src})
+	if err != nil || kb.ID != "kb-new" || kb.SourceType != "matrix" || kb.FolderID != 7 {
+		t.Fatalf("create = %+v, %v", kb, err)
+	}
+	if err := kbs.Update(ctx, "kb-1", KBInput{Name: &name}); err != nil {
+		t.Fatal(err)
+	}
+	if err := kbs.Delete(ctx, "kb-1"); err != nil {
+		t.Fatal(err)
+	}
+	want := []call{
+		{"POST", "/agentic/knowledge_bases", `{"name":"N","folder_id":"7","source_type":"matrix"}`},
+		{"PUT", "/agentic/knowledge_bases/kb-1", `{"name":"N"}`},
+		{"DELETE", "/agentic/knowledge_bases/kb-1", ""},
+	}
+	if len(calls) != len(want) {
+		t.Fatalf("calls = %+v", calls)
+	}
+	for i := range want {
+		if calls[i] != want[i] {
+			t.Errorf("call %d = %+v, want %+v", i, calls[i], want[i])
+		}
 	}
 }

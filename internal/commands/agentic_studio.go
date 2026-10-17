@@ -22,9 +22,10 @@ func newKBCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "kb",
 		Aliases: []string{"knowledge-bases"},
-		Short:   "Read Agent Studio knowledge bases",
+		Short:   "Manage Agent Studio knowledge bases",
 	}
 	cmd.AddCommand(newKBListCmd(), newKBGetCmd(), newKBRecipesCmd(), newKBDataSourcesCmd())
+	addKBWriteCmds(cmd)
 	return cmd
 }
 

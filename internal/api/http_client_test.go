@@ -68,6 +68,26 @@ func TestHTTPClientDo_NotFound(t *testing.T) {
 	}
 }
 
+// Agent Studio's 422s put the cause in "detail" under a generic "title"
+// (captured live from a duplicate-name KB create); dropping it leaves the
+// caller with no way to correct the request.
+func TestHTTPClientDo_AgentStudioErrorDetail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(422)
+		w.Write([]byte(`{"errors":[{"code":422,"title":"Create knowledge base failed","detail":"Name has already been taken"}]}`))
+	}))
+	defer srv.Close()
+
+	err := NewHTTPClient(srv.URL, "test-token").do(context.Background(), "POST", "/agentic/knowledge_bases", nil, nil)
+	apiErr, ok := err.(*APIError)
+	if !ok {
+		t.Fatalf("expected APIError, got %T", err)
+	}
+	if want := "Create knowledge base failed: Name has already been taken"; apiErr.Message != want {
+		t.Errorf("message = %q, want %q", apiErr.Message, want)
+	}
+}
+
 func TestHTTPClientDo_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)

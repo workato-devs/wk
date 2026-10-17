@@ -124,12 +124,15 @@ type GenieService interface {
 	Remove(ctx context.Context, id string, kind GenieAssignment, ids []string) error
 }
 
-// KnowledgeBaseService defines read operations on Agent Studio knowledge bases.
+// KnowledgeBaseService defines operations on Agent Studio knowledge bases.
 type KnowledgeBaseService interface {
 	List(ctx context.Context, opts *KBListOptions) ([]KnowledgeBase, OffsetPage, error)
 	Get(ctx context.Context, id string) (*KnowledgeBase, error)
 	Recipes(ctx context.Context, id string, opts *PaginationOptions) ([]json.RawMessage, OffsetPage, error)
 	DataSources(ctx context.Context, id string) (json.RawMessage, error)
+	Create(ctx context.Context, in KBInput) (*KnowledgeBase, error)
+	Update(ctx context.Context, id string, in KBInput) error
+	Delete(ctx context.Context, id string) error
 }
 
 // GenieClientService defines read operations on genie Headless API clients.

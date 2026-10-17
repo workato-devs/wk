@@ -276,9 +276,11 @@ func (c *HTTPClient) do(ctx context.Context, method, path string, body, result a
 			Error     string `json:"error"`
 			ErrorType string `json:"error_type"`
 			Reason    string `json:"reason"`
-			// Agent Studio's shape: {"errors":[{"code":400,"title":"…"}]}
+			// Agent Studio's shape: {"errors":[{"code":400,"title":"…"}]}.
+			// 422s add the actual cause as "detail" under a generic title.
 			Errors []struct {
-				Title string `json:"title"`
+				Title  string `json:"title"`
+				Detail string `json:"detail"`
 			} `json:"errors"`
 		}
 		if json.Unmarshal(respBody, &errResp) == nil {
@@ -289,6 +291,9 @@ func (c *HTTPClient) do(ctx context.Context, method, path string, body, result a
 			} else if len(errResp.Errors) > 0 && errResp.Errors[0].Title != "" {
 				titles := make([]string, 0, len(errResp.Errors))
 				for _, e := range errResp.Errors {
+					if e.Detail != "" {
+						e.Title += ": " + e.Detail
+					}
 					titles = append(titles, e.Title)
 				}
 				apiErr.Message = strings.Join(titles, "; ")

@@ -79,6 +79,41 @@ func (s *knowledgeBaseService) DataSources(ctx context.Context, id string) (json
 	return result.Data, nil
 }
 
+// KBInput is the body of a knowledge base create or update. Nil fields aren't
+// sent. Update accepts only Name and Description: the API rejects folder_id
+// (422) and silently ignores source_type. data_sources isn't modeled: the API
+// silently ignored every shape tried, and the valid source names are unknown.
+type KBInput struct {
+	Name        *string `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
+	FolderID    *string `json:"folder_id,omitempty"`
+	SourceType  *string `json:"source_type,omitempty"` // "recipe" or "matrix"; others become "recipe"
+}
+
+// Create returns the new knowledge base; unlike genie create, the API sends
+// the whole object.
+func (s *knowledgeBaseService) Create(ctx context.Context, in KBInput) (*KnowledgeBase, error) {
+	var result struct {
+		Data KnowledgeBase `json:"data"`
+	}
+	if err := s.client.do(ctx, "POST", "/agentic/knowledge_bases", in, &result); err != nil {
+		return nil, err
+	}
+	return &result.Data, nil
+}
+
+// Update changes the set fields. The API returns no body, and answers 200
+// while ignoring a blank name or description, so callers must re-read.
+func (s *knowledgeBaseService) Update(ctx context.Context, id string, in KBInput) error {
+	return s.client.do(ctx, "PUT", "/agentic/knowledge_bases/"+url.PathEscape(id), in, nil)
+}
+
+// Delete removes a knowledge base. It succeeds even when genies use it,
+// detaching it from them.
+func (s *knowledgeBaseService) Delete(ctx context.Context, id string) error {
+	return s.client.do(ctx, "DELETE", "/agentic/knowledge_bases/"+url.PathEscape(id), nil, nil)
+}
+
 type genieClientService struct{ client *HTTPClient }
 
 // List returns one page of genie clients. The reference documents no

@@ -93,6 +93,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reads each ID before and after and reports an outcome per ID: `assigned`,
   `already_assigned`, `removed`, `not_assigned`, `not_found` or `not_applied`.
   It exits non-zero if any ID was `not_found` or `not_applied`.
+- Knowledge base write commands: `wk agentic kb create|update|delete`.
+  `create` takes `--name` and `--folder-id` (required), `--description` and
+  `--source-type` (`recipe`, the default, or `matrix`). `update` changes only
+  `--name` and `--description`, the only fields the API lets you change, and
+  re-reads the knowledge base to confirm the change took. `wk` rejects input
+  the API would accept and then ignore: any other `--source-type` (the API
+  quietly makes it `recipe`), and a blank name or description (the API answers
+  `200` and changes nothing, so a description can't be cleared). **`delete`
+  refuses a knowledge base that genies use**, naming them, because the API
+  deletes it anyway and detaches it from running genies; `--force` deletes it
+  and `--json` lists the genies it was detached from. Data sources for Matrix
+  knowledge bases can't be set: the API accepts them but didn't apply any we
+  tried.
 - A global `--raw` flag prints the Workato API's response body verbatim
   instead of `wk`'s JSON. `--json` is `wk`'s modeled output and includes only
   the fields `wk` models (`wk connections list --json` shows 8 fields per
@@ -125,7 +138,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   page came back full.
 - Agent Studio API errors now show their message: `API error 400: Data
   sources are only available for Matrix knowledge bases` rather than the raw
-  `{"errors":[…]}` body.
+  `{"errors":[…]}` body. When the body also has a `detail`, it's included
+  too: `Create knowledge base failed: Name has already been taken`, not just
+  the generic title.
 - `wk mcp servers token-renew --help` no longer says the new URL is printed in
   every case. For `hashed_token` servers (the default for new servers), Workato
   doesn't return the new token: the printed URL has none and won't connect,
