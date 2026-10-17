@@ -2,13 +2,18 @@
 
 **Author(s):** Zayne Turner
 **Amended-by:** Claude [role: assistant; harness: Claude Code; model: Sonnet 5], dir. Zayne Turner — July 2026
+**Amended-by:** Claude [role: assistant; harness: Claude Code; model: Opus 5], dir. Zayne Turner — August 2026
+**Amended-by:** Claude [role: assistant; harness: Claude Code; model: Opus 5.5], dir. Zayne Turner — October 2026
 **Status:** Accepted
 **Date:** March 3, 2026
 **Deciders:** DevRel Engineering
-**References:** ADR-001 (Foundational Architecture), PRD Section "MCP Integration Strategy"
+**References:** ADR-001 (Foundational Architecture), ADR-008 (AIRO Integration), PRD Section "MCP Integration Strategy"
 
 **Amendments:**
 - July 2026 — Platform shipped `mcp_servers` management API; `wk mcp servers` CRUD/token-renew built. Token-retrieval regression for `hashed_token`/`*.apim.mcp.*` servers (issue #76) reported fixed by the platform team.
+- August 2026 — A **third** MCP server type exists (`airo_mcp`) and it is **not** a REST passthrough, falsifying this ADR's central premise for that server. Auto-delegation stays cut, on new grounds. MCP client needs bearer auth. See ADR-008.
+- October 2026 — The August amendment's figures came from a workspace without AIRO enabled. They were re-verified in AIRO-enabled workspaces and corrected in place before the amendment was ever published (98 tools / 158 resources / 3 prompts; ~44 mutating; still no safety annotations). Its conclusions are unchanged.
+- October 2026 — Issue #76's `token_renew` regression is present again for `hashed_token` servers (no token returned); the method field is `authentication_method`, not `auth_type`. See amendment after the July note.
 
 ---
 
@@ -31,6 +36,22 @@ During POC development, we probed the live Workato MCP infrastructure at `app.tr
 ## Findings from Live Probing (February 19, 2026)
 
 ### Two Distinct MCP Server Types Exist in Workato
+
+> **Amendment (August 2026): there are three. The third one breaks the premise this ADR rests on.**
+> Probing on 2026-08-12, and re-verifying on 2026-10-16 in workspaces with AIRO enabled, found a
+> third server type that the two below do not describe:
+>
+> ```
+> AIRO MCP — built in (not user-created); documented at docs.workato.com/en/airo/mcp:
+> URL:    https://app.{region}.workato.com/airo_mcp        (note: no /api prefix)
+> Tools:  98 — plus 3 prompts and 158 resources (October 2026; 84/2/49 in August)
+> Auth:   Authorization: Bearer <API token>, or OAuth 2.0   (header, NOT a URL parameter)
+> Server: {"name":"airo-mcp","version":"1.0.0"}, protocolVersion 2024-11-05
+> ```
+>
+> It differs from both types below in the way that matters most to this ADR: **it is not a REST
+> passthrough.** See the amendment to "Why Auto-Delegation Adds No Value" for what that changes and
+> what it does not. Full findings are in ADR-008.
 
 **Dev API MCP** — always available, not user-created:
 ```
@@ -55,6 +76,51 @@ The PRD's delegation model assumed the MCP server would provide richer capabilit
 The Dev API MCP is a **thin REST passthrough**. Each of its 160 tools maps 1:1 to a Dev API endpoint. It adds no composite operations, no validation, and no enriched responses. Worse, it returns Ruby hash notation (`=>`) instead of valid JSON, making its output strictly harder to parse than the REST API. It uses the same dev API token passed as a query parameter — no distinct auth model, no additional audit trail beyond what the platform already logs for all API token transactions.
 
 Routing CLI commands through the MCP server would add a protocol layer (JSON-RPC over HTTP with SSE) on top of REST calls that the CLI already makes directly, with no functional benefit and a measurable latency cost. Every `wk recipes list` would become: CLI → JSON-RPC request → MCP server → REST API → MCP server → SSE response → CLI, instead of: CLI → REST API → CLI.
+
+> **Amendment (August 2026): this reasoning is now false for `airo_mcp` — and auto-delegation stays cut anyway, for a different and stronger reason.**
+>
+> The passthrough finding above is accurate for the **Dev API MCP** and remains the reason
+> delegation buys nothing there. It does **not** hold for AIRO MCP. Every clause inverts:
+>
+> | Premise above | `airo_mcp` (re-verified 2026-10-16) |
+> |---|---|
+> | 1:1 with REST endpoints | Not a mirror. Some tools have no REST counterpart found (blueprints, `docs_get`, `company_knowledge_search`), and some REST permission groups have no MCP tool at all (e.g. `/api/recipe_validators/*`). The mapping is uneven in both directions, not 1:1. |
+> | No composite operations | `recipe_builder_*` (27 tools) and `blueprint_*` (8) are stateful multi-call builder protocols keyed on a caller-supplied `session_id`, with server-held state that persists across independent requests. |
+> | No enriched responses | Returns rendered markdown, plus a 158-item documentation/prompt resource corpus (`docs_get`). |
+> | Ruby hash notation, worse than REST | Clean JSON-RPC. Tool errors follow the MCP spec (`result.isError: true`). |
+>
+> Note what this does *not* say: `airo_mcp` is not the only path to creating recipes. `wk` already
+> creates and updates recipe code over REST via `POST /recipes` / `PUT /recipes/{id}`. See ADR-008
+> Decision 5.
+>
+> So the "delegation adds no value" argument no longer covers the whole MCP surface, and the
+> "What We'll Need to Revisit" trigger below — *"if the MCP server gains capabilities beyond
+> passthrough, re-evaluate delegation"* — has fired.
+>
+> **We re-evaluated it. Auto-delegation stays cut.** The rejection now rests on a different
+> premise, and this matters: do not read this amendment as softening the `auto_delegate` cut.
+> The original reason was *delegation is pointless*. The current reason is **delegation is
+> unsafe here**. Roughly 44 of the 98 AIRO tools mutate workspace state — creating recipes,
+> genies, and MCP servers, deleting knowledge base documents, truncating data tables — and **not
+> one of the 98 carries MCP safety annotations** (`readOnlyHint` / `destructiveHint`). The only
+> metadata is a `_meta` category (`workato.com/tool_type`), which says what a tool acts on, not
+> whether it writes. An API token's AIRO access also acts as the workspace owner and, per the docs,
+> isn't narrowed by role privileges or project access. Implicitly routing a user's command
+> into a non-deterministic, LLM-backed, mutating surface that cannot even self-report which of its
+> operations are destructive is not a latency trade-off; it is an auditability failure. A CLI whose
+> `list` command might create a recipe is not a CLI.
+>
+> `wk` doesn't call AIRO tools at all: it has no `wk airo` commands and only sets up the
+> connection an agent uses (`wk mcp connect`; ADR-008 Decisions 2 and 8). The `auto_delegate` /
+> `prefer_mcp_for` / `never_delegate` rejection in "What We're Cutting" is unaffected and should
+> not be re-litigated on the strength of the table above.
+>
+> One thing here *does* need to change: **`internal/mcp/client.go` sets no `Authorization`
+> header**, because both server types documented above carry their credential in the URL
+> (`?wkt_token=` / `?dev_api_token=`). AIRO MCP requires a bearer header, so
+> `wk mcp tools https://app.trial.workato.com/airo_mcp` currently fails with `HTTP 401`. Adding
+> optional bearer auth to the MCP client is tracked as ADR-008 Decision 3 — it is a gap in the
+> *protocol-level tooling* this ADR chose to build, not a change to that choice.
 
 ### Why MCP CRUD Commands Can't Be Built Today
 
@@ -175,6 +241,30 @@ server_url = ""                   # parsed but not acted on
 
 > **Amendment (July 2026): first and third bullets done; token-renew regression closed out.**
 > The platform shipped `mcp_servers` management endpoints (first bullet — done). Token programmatic access (third bullet) arrived via `token_renew`; issue #76 tracked a follow-on platform-side regression where `token_renew` stopped returning the token in `mcp_url` for `auth_type: hashed_token` / `*.apim.mcp.*` servers specifically — the platform team has since reported that fixed. The delegation re-evaluation bullet is untouched; still no evidence the MCP server offers more than passthrough.
+
+> **Amendment (October 2026): the #76 regression is present again.**
+> Observed 2026-10-16 on a scratch `hashed_token` server in a trial workspace (created, renewed,
+> deleted): `token_renew` invalidated the token but returned an `mcp_url` with no `wkt_token`, the
+> response had no other token field, and the returned URL got `401`. So for `hashed_token` servers,
+> the default for new servers, the token is still UI-reveal only, and renewing it from the API
+> locks out every client without producing a usable URL. `wk mcp servers token-renew`'s help now
+> says so. One correction to the July note: the server's method is in `authentication_method`
+> (`token`, `hashed_token`, `workato_idp`), returned by the list endpoint only; `auth_type` comes
+> back empty. See ADR-008 Decision 8 for how `wk mcp connect` handles each method.
+
+> **Amendment (August 2026): the second bullet has now fired, and been closed.**
+> The July note above ("still no evidence the MCP server offers more than passthrough") was true of
+> the two server types known at the time. AIRO MCP offers substantially more than passthrough — see
+> the amendment under "Why Auto-Delegation Adds No Value" — so the trigger condition was met. The
+> re-evaluation happened and **the outcome was to keep delegation cut**, on safety and
+> auditability grounds rather than the original value grounds. This bullet is therefore closed, not
+> merely pending: a future contributor should not treat "the MCP server gained capabilities" as an
+> open invitation to build `auto_delegate`. New evidence would need to address the *safety*
+> argument, not the capability one.
+>
+> Two genuinely new items replace it, both tracked in ADR-008: the MCP client needs optional bearer
+> auth for first-party endpoints, and Workato should be asked to publish `readOnlyHint` /
+> `destructiveHint` annotations on the AIRO tool surface.
 
 ---
 

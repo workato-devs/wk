@@ -1,10 +1,14 @@
 # ADR-002: Sync Engine — RLCM-Based Pull/Push with Sidecar Metadata
 
 **Author(s):** Zayne Turner
+**Amended-by:** Claude [role: assistant; harness: Claude Code; model: Opus 5], dir. Zayne Turner — August 2026
 **Status:** Accepted
 **Date:** March 3, 2026
 **Deciders:** DevRel Engineering
-**References:** ADR-001 (Foundational Architecture), PRD Section "Sync Engine Design"
+**References:** ADR-001 (Foundational Architecture), ADR-009 (Agent Studio DX Completeness), PRD Section "Sync Engine Design"
+
+**Amendments:**
+- August 2026 — Separated three layers that had been conflated: manifest `AssetType` vs. package payload (push/pull compatible) vs. `wk` sync-tracked metadata. `agentic_skill` is a valid manifest type; `genie`/`knowledge_base` are not; `api_collection`/`folder` are push/pull compatible *without* being manifest types.
 
 ---
 
@@ -84,6 +88,44 @@ wk diff
 **Consequence:** Every pull and push involves a zip archive. There is no way to sync a single file — the smallest unit of sync is whatever the RLCM export manifest produces for a given folder path. This is a known trade-off: correctness over granularity.
 
 **Implementation:** `internal/api/packages.go` wraps the full RLCM lifecycle — `Export()`, `ExportStatus()`, `Download()`, `Import()`, and `ImportStatus()` for polling.
+
+> **Amendment (August 2026): three distinct layers govern "can `wk` handle asset type X" — do not collapse them.**
+>
+> Because this decision routes all sync through RLCM, it is tempting to treat one RLCM vocabulary as
+> *the* answer to what `wk` supports. It is not. There are three separate layers, and an asset type
+> can sit in any combination of them:
+>
+> | Layer | Question it answers | Authority |
+> |---|---|---|
+> | 1. Manifest `AssetType` | Can this be **named directly** as a top-level entry in an export manifest (`assets:[{type:X}]`)? | The `RecipeLifecycle::AssetType` enum |
+> | 2. Package payload | Does this **travel inside the exported zip** and import back — i.e. is it push/pull compatible? | What the export actually produces |
+> | 3. Sync-tracked metadata | Does `wk` give it a `.meta.json` sidecar with a known `type`? | `inferAssetType` in `internal/sync/pull.go` |
+>
+> **Layer 1 is directly observable.** Exporting a manifest with an unsupported type fails with
+> `Enum RecipeLifecycle::AssetType key not found: "<type>"`; a supported type fails later or
+> succeeds (e.g. `Couldn't find all 'recipe' with 'id'`). Probed 2026-08-13:
+>
+> - **In the enum:** `recipe`, `connection`, `lookup_table`, `project`, `skill`, `agentic_skill`
+> - **Not in the enum:** `genie`, `knowledge_base`, `api_collection`, `folder`
+>
+> **Layer 1 absence does *not* mean unsupported.** `api_collection` and `folder` are the worked
+> counterexamples: neither is a valid manifest `AssetType`, yet both are push/pull compatible —
+> folders are how manifests scope an export in the first place, and `wk` already assigns sidecar
+> types for `api_collection` (`.api_group.json`) and `api_endpoint` (`.api_endpoint.json`) in
+> `inferAssetType`. They ride inside the package rather than being named as manifest entries.
+>
+> **Layer 1 presence does not imply layer 3 either.** `agentic_skill` being a valid manifest type
+> means skills are nameable and package-transportable; it says nothing about whether `wk sync`
+> recognizes a skill file today. `inferAssetType` currently returns `"unknown"` for anything that
+> isn't a recipe, connection, api_endpoint, or api_group — so skill support, if wanted, is a
+> `wk`-side gap to close, not a platform capability to wait for.
+>
+> **What this does settle:** `genie` and `knowledge_base` are absent from layer 1 *and* have no
+> observed package representation, so there is no RLCM path to sync them today. That is a platform
+> boundary. See ADR-009 Decision 4.
+>
+> When evaluating a new asset type, establish all three layers separately. Probing the enum answers
+> only the first.
 
 ### Decision 2: `.meta.json` Sidecar Files for Path Identity
 

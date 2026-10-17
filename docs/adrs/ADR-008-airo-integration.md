@@ -2,12 +2,13 @@
 
 **Author(s):** Zayne Turner, Claude [role: assistant; harness: Claude Code; model: Opus 5]
 **Amended-by:** Claude [role: assistant; harness: Claude Code; model: Opus 5.5], dir. Zayne Turner — October 2026
-**Status:** Proposed
+**Status:** Accepted
 **Date:** August 12, 2026
+**Implemented:** October 16, 2026
 **References:** ADR-003 (MCP Strategy), ADR-006 (Profile Identity Model), ADR-009 (Agent Studio DX Completeness), [AIRO MCP server docs](https://docs.workato.com/en/airo/mcp), [Workato Labs guiding principles](https://workato-devs.github.io/labs/principles.html) — chiefly *"built for agent-assisted development"* and *"open by default"*
 
 **Amendments:**
-- October 2026 — Revised in place before acceptance (never published). The August probe ran in a workspace without AIRO enabled; re-verified 2026-10-16 in AIRO-enabled workspaces against Workato's published AIRO MCP docs. The planned `wk airo` command group, `wk recipes summarize` and the tool allowlist / `--allow-write` were cut; `wk mcp connect` (Decision 8) was added with OAuth as its default. Investigation detail moved to the probe notes. Decision numbers are unchanged, so existing references still hold.
+- October 2026 — Revised in place before acceptance (never published). The August probe ran in a workspace without AIRO enabled; re-verified 2026-10-16 in AIRO-enabled workspaces against Workato's published AIRO MCP docs. The planned `wk airo` command group, `wk recipes summarize` and the tool allowlist / `--allow-write` were cut; `wk mcp connect` (Decision 8) was added with OAuth as its default. Investigation detail was removed; the probe evidence was not kept. Decision numbers are unchanged, so existing references still hold. Before acceptance (October 17), remaining probe evidence was trimmed so the record carries decisions and their reasons only.
 
 ---
 
@@ -21,27 +22,23 @@ The facts the decisions below rest on:
   with that user's permissions**. An API token sent as a bearer header acts as **the workspace
   owner**. One role permission, "AIRO MCP Server", grants every tool, and other role privileges
   and project access do not narrow it. Audit log entries are tagged "(via AIRO)".
-- **About 100 tools, and the surface moves fast.** 98 tools on 2026-10-16, up from 84 in August,
-  with 36 of the original 84 changing input schemas in between.
+- **About 100 tools, and the surface moves fast:** tools are added and input schemas change
+  between releases.
 - **No tool carries MCP safety annotations** (`readOnlyHint`/`destructiveHint`). The per-tool
   `_meta` field (`"workato.com/tool_type"`) is a category (recipe, genie, workspace, …), not a
-  read/write signal; every category has both kinds. By name, 44 of 98 tools mutate state.
+  read/write signal; every category has both kinds. About half the tools mutate state.
 - **Builder protocols are stateful and LLM-shaped.** `recipe_builder_*` and `blueprint_*` (and
   `genie_*`) require a caller-chosen `session_id`, and each call's arguments come from reading the
   previous call's rendered output. The server's `initialize` instructions are written for an agent.
   This is what broke ADR-003's premise that MCP delegation buys nothing; ADR-003 was amended, and
   this ADR decides what `wk` builds on top.
-- **AIRO's REST surface is effectively gone.** `POST /api/airo/chat` returns `404` with every AIRO
-  permission granted and is undocumented; `GET /api/airo/knowledge_bases` answers but is also
-  undocumented.
+- **AIRO has no documented REST surface.** `POST /api/airo/chat` returns `404`, and
+  `GET /api/airo/knowledge_bases` answers but is undocumented.
 
 **Out of scope**, and not to be re-derived from AIRO's tool list: recipe building
 (`/api/recipe_validators/*`; local `wk lint` is unaffected), Connector SDK work including
 `connector_builder_*` (a separate tool; see `docs/known-limitations.md`), and data tables
-(plugin-scoped, ADR-009 Decision 8).
-
-*Probe captures and detailed notes are in the gitignored `tmp/api-exploration/airo-2026-10/`. Ask
-Zayne if you don't have a copy.*
+(plugin-scoped; see ADR-009 and ADR-004).
 
 ---
 
@@ -91,7 +88,7 @@ implicitly, and for first-party endpoints the token never goes in, or is echoed 
 The tool allowlist and `--allow-write` existed only to guard `wk airo call`, which Decision 2 cut.
 The finding behind them stands for anyone who later builds a `wk` caller of AIRO tools: with no
 safety annotations and `_meta` carrying only a category, such a caller must keep a known-read-only
-allowlist and fail closed on anything unrecognized. A draft list is in the probe notes.
+allowlist and fail closed on anything unrecognized.
 
 ### 5. Builder protocols are not wrapped: their only viable driver is an LLM
 
@@ -203,34 +200,31 @@ owner-level power over the workspace.
    `wk` reads the region's `/.well-known/oauth-authorization-server`. If `registration_endpoint` is
    absent, `--auth oauth` stops with an error naming the cause and `--auth token` as the
    alternative, including its workspace-owner consequence, and the neutral details report OAuth as
-   unavailable. Observed 2026-10-16: present in every production data center (US, EU, JP, SG, AU,
-   IL, KR, UK), absent on trial (`POST /oauth2/register` → `403 "Dynamic Client Registration is not
-   enabled"`). Without registration a client needs a pre-registered client ID, which Workato offers
-   no way to get. If trial gains registration, `wk` just works; if a data center drops it, `wk`
+   unavailable. Today every production data center advertises registration and trial (Developer
+   Sandbox) doesn't. Without it a client needs a pre-registered client ID, which Workato offers no
+   way to get. If trial gains registration, `wk` just works; if a data center drops it, `wk`
    refuses instead of writing a config that will fail.
 
-**`--auth oauth` ships unverified end to end, labeled as such.** No production workspace was
-available, so authorization, token exchange and a tool call acting as the user were not exercised.
-Registration was: a public loopback client registered on `app.workato.com`, and Codex, given a
-URL-only entry, registered itself and produced a valid authorize URL. What `wk` writes is exactly
-Workato's documented setup (a URL-only entry, as in their `claude mcp add --transport http <url>`),
-and the flow runs entirely between client and Workato, so a break would hit a user following
-Workato's docs by hand too. Per *"ship fast, learn in the open — release early against real usage
-signal"*, it ships, and the release notes and `docs/known-limitations.md` say it wasn't verified
-end to end and ask for reports.
+**`--auth oauth` ships unverified end to end, labeled as such.** Client registration was
+exercised, but authorization, token exchange and a tool call acting as the user weren't, for lack
+of a production workspace. What `wk` writes is exactly Workato's documented setup (a URL-only
+entry), and the flow runs entirely between client and Workato, so a break would hit a user
+following Workato's docs by hand too. Per *"ship fast, learn in the open — release early against
+real usage signal"*, it ships, and the release notes and `docs/known-limitations.md` say it wasn't
+verified end to end and ask for reports.
 
-**Client behaviors the adapters must respect** (observed 2026-10-16):
+**Client behaviors the adapters must respect** (as of Claude Code 2.1.302, Codex 0.156.1, Cursor
+3.4.20):
 
-- **Claude Code** (2.1.302): `headersHelper` runs on each connection and after a `401`/`403`
-  (*verified* `✔ Connected` with a token entry). **It runs only after the user accepts the folder
-  trust prompt, at local scope too**; until then Claude Code falls back to OAuth, which fails on
-  trial. Headless `claude -p` never shows the prompt, so trust must be accepted interactively once;
-  `wk` says so. Before running the helper it strips env vars whose names contain TOKEN, SECRET,
-  PASSWORD, KEY or AUTH, so `wk mcp auth-header` reads the keychain. A helper returning
-  `Authorization` disables OAuth for that server. Re-adding a name fails with `already exists`,
-  which `wk` turns into a `--force` hint. Reportedly (unverified) it reads credential-like `${VAR}`s
-  as empty in remote `url`/`headers`, so the adapter doesn't rely on `${VAR}` expansion.
-- **Codex** (0.156.1): `codex mcp add` with a URL-only entry saves the entry and **then starts an
+- **Claude Code:** `headersHelper` runs on each connection and after a `401`/`403`, but **only after
+  the user accepts the folder trust prompt, at local scope too**; until then Claude Code falls back
+  to OAuth, which fails on trial. Headless `claude -p` never shows the prompt, so trust must be
+  accepted interactively once; `wk` says so. Before running the helper it strips env vars whose
+  names contain TOKEN, SECRET, PASSWORD, KEY or AUTH, so `wk mcp auth-header` reads the keychain. A
+  helper returning `Authorization` disables OAuth for that server. Re-adding a name fails with
+  `already exists`, which `wk` turns into a `--force` hint. The adapter doesn't rely on `${VAR}`
+  expansion in remote `url`/`headers`.
+- **Codex:** `codex mcp add` with a URL-only entry saves the entry and **then starts an
   OAuth flow that waits for a browser**, which would hang an agent or CI. `wk` stops it once it
   starts and tells the user to run `codex mcp login <name>`. Codex runs in its own process group on
   Unix and the whole group is killed, so an npm-installed Codex (a Node wrapper) can't leave `wk`
@@ -238,7 +232,7 @@ end to end and ask for reports.
   once Codex exits. **`codex mcp add` silently overwrites an existing server**, so `wk` checks with
   `codex mcp get` first and requires `--force`. `codex mcp add` has no flag for Codex's
   `http_headers_helper`, hence `--bearer-token-env-var`.
-- **Cursor** (3.4.20): **print-only because its CLI doesn't do what it documents.**
+- **Cursor:** **print-only because its CLI doesn't do what it documents.**
   `cursor --add-mcp` ignored `--mcp-workspace` (warned it's unknown though `--help` lists it) and
   wrote VS Code's `User/settings.json` format instead of `~/.cursor/mcp.json`, where Cursor's agent
   reads servers. The OAuth entry follows Workato's docs (`npx -y mcp-remote <url>`).
@@ -249,8 +243,8 @@ end to end and ask for reports.
 
 | Method | What the API gives `wk` | What `wk mcp connect` does |
 |---|---|---|
-| `workato_idp` | The URL, no token. OAuth via **Workato Identity** (`id.<region>.workato.com/auth/servers/<id>`), which supports client registration **even on trial**. | URL-only entry, like AIRO OAuth; the user signs in as their Workato Identity user. *Verified:* Claude Code accepted it (`Needs authentication`). |
-| `token` | A URL containing `?wkt_token=`: **the URL is the credential.** | Installs only with `--allow-url-token`, never at `project` config scope. Without the flag, output shows the token as `REDACTED` and names the flag. *Verified:* `✔ Connected` in Claude Code. |
+| `workato_idp` | The URL, no token. OAuth via **Workato Identity** (`id.<region>.workato.com/auth/servers/<id>`), which supports client registration **even on trial**. | URL-only entry, like AIRO OAuth; the user signs in as their Workato Identity user. |
+| `token` | A URL containing `?wkt_token=`: **the URL is the credential.** | Installs only with `--allow-url-token`, never at `project` config scope. Without the flag, output shows the token as `REDACTED` and names the flag. |
 | `hashed_token` (default for new servers) | The URL, no token. The token can't be read, and `token_renew` invalidates the old one without returning the new one. | Refuses to install and never renews (renewing would break every existing client and still configure nothing). `--print` gives the entry with a placeholder for the URL copied from the Workato UI. |
 
 **`wk`'s own authentication is unchanged this release.** OAuth happens entirely in the client, and
@@ -315,17 +309,13 @@ the token path reads the existing profile credential. Making `wk` its own OAuth 
 - **The OAuth path, end to end.** Remove the "unverified" label once someone with a production
   workspace confirms: add → authorize → a tool call acting as the user, token refresh, and what
   happens when the browser session's workspace differs from the profile's.
-- **Trial in Claude Code** (`claude --debug`): confirm it fails as expected, and whether it tries an
-  unadvertised client ID metadata document. **`${VAR}` expansion** in Claude Code remote headers.
-- **Codex with a token** was checked only to the config (`codex mcp get`); no tool call yet.
-- **`workato_idp` sign-in** wasn't completed (needs a Workato Identity user in the server's groups).
+- **Paths not yet exercised to a tool call:** Codex with a token, and `workato_idp` sign-in.
 - **`hashed_token`:** if `token_renew` returns the new token again (ADR-003, issue #76), an explicit
   `--renew-token` becomes possible, stating plainly that every client on the old token stops working.
 - **Cursor:** check both printed entries in the app; if `--add-mcp` writes `~/.cursor/mcp.json` (or
   `--mcp-workspace` works), Cursor becomes installable.
 - **More adapters** (Copilot in VS Code, Copilot CLI, Claude Desktop) when each can be verified
   against the real client; the neutral details cover them today.
-- **Windows:** if a Codex child outliving the kill causes problems, use a job object.
 - **If AIRO ships MCP tool annotations, or a builder gains a REST or single-call equivalent**,
   Decisions 4 and 5 lose part of their footing; reopen them as the general questions they name.
 - **The `401` `reason` vocabulary** before mapping reasons to remediation text: check whether bad

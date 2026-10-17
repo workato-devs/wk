@@ -1,6 +1,7 @@
 # ADR-006: Profile Identity Model — Workspace & Environment Metadata
 
 **Author(s):** Zayne Turner, Chris Miller
+**Amended-by:** Claude [role: assistant; harness: Claude Code; model: Opus 5.5], dir. Zayne Turner — October 2026
 **Status:** Proposed
 **Date:** April 9, 2026
 **Deciders:** DevRel Engineering, Platform CLI Team
@@ -9,6 +10,7 @@
 **Amendments:**
 - April 17, 2026 — Login ergonomics: `--workspace` optional override (introspected from `GET /users/me`), computed `--name` default, `wk.toml` snapshot fields; non-interactive behavior formalized (Sub-decision 10).
 - April 20, 2026 — `profiles.env` moved out of `.wk/` to `<projectRoot>/profiles.env` (Sub-decision 3); Sub-decisions 7–9 updated. See revision history below.
+- October 2026 — Sub-decision 1: the uniqueness check compares workspace **ID**, not display name (#100). `auth list` honors `--store-type` (#105).
 
 > **Revision history**
 > - **April 17, 2026** — Integrated login ergonomic improvements from field testing: `--workspace` becomes an optional override (introspected from `GET /users/me`), `--name` gains a computed default from `<workspace-slug>-<environment>[-<region>]`, and `wk.toml` is extended with `workspace`, `workspace_id`, `environment`, and `email` as informational snapshot fields (safe because `.wk/` is gitignored per ADR-005). Non-interactive mode behavior formalized as Sub-decision 10. Environment introspection via `/activity_logs` considered and deferred.
@@ -155,6 +157,10 @@ The snapshot fields are **informational only** — runtime routing and credentia
 - **Environment variable credential support** — Process environment variables (`WK_TOKEN`, `WK_REGION`) are removed. The CLI no longer reads credentials from the process environment. CI/CD pipelines use the project-level file store instead. See Sub-decision 7.
 - **`auth login` store type** — No longer hardcoded to `StoreKeychain`. The `--store-type` flag selects the credential backend at profile creation time.
 - **`auth list` output** — Adds WORKSPACE and ENVIRONMENT columns. Shows file-store profiles from `profiles.env` when run inside a project directory.
+  > **Amendment (October 2026):** `auth list` now honors `--store-type` (#105). It had silently
+  > discarded the flag. With no flag the merged view above is unchanged; `--store-type keychain`
+  > lists only keychain profiles; `--store-type file` lists only `profiles.env` profiles and fails
+  > outside a project or without a `profiles.env`, with the same error as every other command.
 - **`wk init` validation** — Now validates that the named profile exists and that the active profile matches. See Sub-decision 8.
 
 ---
@@ -164,6 +170,18 @@ The snapshot fields are **informational only** — runtime routing and credentia
 ### 1. Workspace + Environment uniqueness
 
 The CLI enforces that no two profiles share the same `(workspace, environment, region)` tuple. This prevents silent misconfiguration where two profiles accidentally target the same remote environment. The `name` field remains independently unique (as it is the primary key).
+
+> **Amendment (October 2026): "workspace" in the tuple means the workspace ID.**
+> The check had compared `workspace`, the display name from `GET /users/me`. Display names
+> collide across genuinely different workspaces (several trial workspaces under one account all
+> report the account holder's name), so a second, unrelated workspace couldn't be registered at
+> all, and `--force` doesn't bypass this check (#100). Names also change, so the same workspace
+> re-registered after a rename slipped past it. The tuple is now `(workspace_id, environment,
+> region)`. `workspace_id` is introspected at login like `workspace`, so every profile created by
+> `wk auth login` carries it. Profiles saved before `workspace_id` was recorded have none and are
+> skipped by the check, the same backward-compatibility treatment profiles without a workspace or
+> environment already had. When a duplicate is real, the error names the workspace ID and the two
+> ways forward (use that profile, or `wk auth delete` it first).
 
 ### 2. Environment field validation
 

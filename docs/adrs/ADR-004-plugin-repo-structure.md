@@ -1,7 +1,7 @@
 # ADR-004: Plugin Repo Structure — Separate Repos, Not a Monorepo
 
 **Author(s):** Zayne Turner
-**Amended-by:** Claude [role: assistant; harness: Claude Code; model: Opus 4.8], dir. Zayne Turner — June 2026; Kiro [role: assistant; harness: Kiro; model: Claude Sonnet 4.6], dir. Chris Miller — July 2026; Codex [role: assistant; harness: Codex; model: GPT-5], dir. Zayne Turner — July 2026
+**Amended-by:** Claude [role: assistant; harness: Claude Code; model: Opus 4.8], dir. Zayne Turner — June 2026; Kiro [role: assistant; harness: Kiro; model: Claude Sonnet 4.6], dir. Chris Miller — July 2026; Codex [role: assistant; harness: Codex; model: GPT-5], dir. Zayne Turner — July 2026; Claude [role: assistant; harness: Claude Code; model: Opus 5.5], dir. Zayne Turner — October 2026
 **Status:** Accepted
 **Date:** March 3, 2026
 **Deciders:** DevRel Engineering
@@ -12,6 +12,7 @@
 - June 2026 — Repos renamed for public launch: `wk-cli-beta` → `wk`, `wk-lint-beta` → `recipe-lint`. Original names retained in the body below as the historical record.
 - July 2026 — Windows/Scoop install path resolution hardened; `plugin.toml` discovery now walks up parent directories. See amendment after Decision 3.
 - July 2026 — Commands may declare an optional plugin-owned text renderer. The primary result remains canonical; `wk` owns output mode, fallback, and exit status. See amendment after Decision 5.
+- October 2026 — `plugin.toml` gains an optional `files` list; when declared, install copies only the manifest, the entrypoint, and those files instead of the whole source directory (#101). See amendment after Decision 3.
 
 ---
 
@@ -123,6 +124,7 @@ renderer = "lint.render"
 | `commands`             | array  | Commands the plugin registers on the CLI (name, description, method).                |
 | `commands.subcommands` | array  | Nested subcommands under a plugin command (name, description, method, args).         |
 | `commands.renderer`    | string | Optional JSON-RPC method that renders the command result as human-readable text.     |
+| `files` *(Oct 2026)*   | array  | Optional. What install copies besides `plugin.toml` and the entrypoint: `filepath.Match` patterns relative to the plugin root. See amendment after Decision 3. |
 
 **Implementation:** `internal/plugin/manifest.go` — `Manifest` struct parsed via `go-toml/v2`. `LoadManifest()` reads and unmarshals the TOML file.
 
@@ -171,6 +173,35 @@ wk plugins install .
 > 3. `findPluginDir()` — replaces the single `os.Stat` check with an upward
 >    walk (up to 3 levels) to find `plugin.toml`. Handles layouts where the
 >    binary lives in a `bin/` subdirectory of the plugin root.
+
+> **Amendment (October 2026): install copies what the manifest declares, not the whole directory.**
+> "Copies the entire directory" above was fine for a release archive, which ships only what its
+> author packaged, but `wk plugins install .` is also run from a source checkout, and there it
+> copied the whole repo (`recipe-lint`: 852 files, `.git/` included) into `~/.wk/plugins/` (#101).
+> `wk` can't tell runtime assets from source clutter on its own: `recipe-lint` reads
+> `<pluginDir>/profiles/*.json` at runtime as its plugin-bundled profile layer, so "manifest plus
+> entrypoint" alone would silently disable that layer, and a skip-list of known clutter guesses in
+> both directions.
+>
+> So the author says what ships. `plugin.toml` gains an optional `files` list of `filepath.Match`
+> patterns relative to the plugin root (a pattern matching a directory copies it):
+>
+> ```toml
+> files = ["profiles/*.json"]
+> ```
+>
+> - **When `files` is declared**, install copies `plugin.toml`, the entrypoint, and the matches,
+>   nothing else. Because the author stated what ships, a pattern that matches nothing, a pattern
+>   that reaches outside the plugin directory, or a missing entrypoint is an install error, raised
+>   before any existing installation is removed. On Windows the entrypoint lookup also tries
+>   `.exe`/`.cmd`/`.bat`, matching how `os/exec` runs an extensionless entrypoint such as
+>   `./recipe-lint` there.
+> - **When it isn't**, install copies the whole directory exactly as before and warns, naming the
+>   `files` key. No existing plugin breaks, and older `wk` versions ignore the key (`go-toml/v2`
+>   `Unmarshal` skips unknown fields), so a plugin can add it without coordinating a release.
+>
+> This is an addition to the manifest half of the contract this ADR defines; the JSON-RPC half is
+> unchanged.
 
 ### Decision 4: JSON-RPC over Stdio for Plugin Communication
 

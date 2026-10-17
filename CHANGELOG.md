@@ -4,7 +4,7 @@ All notable changes to `wk` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.1.0] - 2026-10-17
 
 ### Added
 
@@ -107,7 +107,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   knowledge bases can't be set: the API accepts them but didn't apply any we
   tried.
 - Genie client commands: `wk agentic clients get|create|update|delete|
-  regenerate|attach|detach`. A client serves at most one genie, and a genie
+  regenerate|start|pause|attach|detach`. A client serves at most one genie, and a genie
   can have several clients (Workato's reference says the reverse).
   - `create` takes `--name`, `--type` (`api_key`, the default, or `oauth` with
     `--redirect-url`) and `--ip-allow-list`. `create` and `regenerate` print an
@@ -117,6 +117,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     `--clear-ip-allow-list` removes every restriction) and, for OAuth clients,
     `--redirect-url`, then re-reads the client to confirm the change took.
   - `get` adds the OAuth client ID and redirect URLs that `list` leaves out.
+  - `pause` stops a client from calling its genie without detaching it (its
+    status becomes `inactive`), and `start` resumes it. Each fails if the
+    client doesn't end up in the expected status.
   - `attach` reports `already_attached` (exit 0) for a client already on that
     genie. A client on another genie gets an error naming that genie and the
     `detach` command, in place of the API's bare `409`.

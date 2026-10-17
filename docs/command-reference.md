@@ -33,7 +33,7 @@ wk
       retry         Retry (repeat) one or more jobs using the latest recipe version
     versions        Manage recipe version history
       comment       Set or update the comment on a recipe version
-  connections (conn)
+  connections (connection, conn)
     list            List connections
     get             Get connection details
     create          Create a connection
@@ -77,10 +77,53 @@ wk
     skills (skill)
       list          List agentic skills
       get           Get an agentic skill by ID
-      create        Create an agentic skill from a recipe
+      create        Create an agentic skill from a recipe (skills can't be deleted via the API)
+    genies (genie)
+      list          List genies
+      get           Get a genie by ID
+      create        Create a genie
+      update        Update a genie's settings
+      delete        Delete a genie (also deletes its clients)
+      start         Start a genie
+      stop          Stop a genie
+      assign-skills / remove-skills
+                    Assign or remove skills, with a per-ID outcome
+      assign-knowledge-bases / remove-knowledge-bases
+                    Assign or remove knowledge bases, with a per-ID outcome
+      assign-user-groups / remove-user-groups
+                    Assign or remove user groups, with a per-ID outcome
+    kb (knowledge-bases)
+      list          List knowledge bases
+      get           Get a knowledge base by ID
+      create        Create a knowledge base
+      update        Rename a knowledge base or change its description
+      delete        Delete a knowledge base (--force if genies use it)
+      recipes       List a knowledge base's recipes
+      data-sources  Show a Matrix knowledge base's data sources
+    clients
+      list          List genie Headless API clients
+      get           Get a genie client by ID
+      create        Create a genie client (prints an api_key client's key once)
+      update        Rename a client or change its IP allow list or redirect URLs
+      delete        Delete a genie client (--force if attached)
+      regenerate    Replace an api_key client's key
+      start         Start (resume) a paused genie client
+      pause         Pause a genie client
+      attach        Attach a client to a genie
+      detach        Detach a client from a genie, keeping the client
+    guardrails
+      get           Show a genie's guardrail policies (beta; read only)
+      pii-entities  List the PII entity types a pii_detection policy can use
+    logs
+      conversations List a genie's conversations (--cursor/--limit)
+      conversation  Show one conversation, with its totals
+      events        List a conversation's events (--cursor/--limit)
   mcp
-    test            Test MCP server connectivity
-    tools           List tools exposed by an MCP server
+    test            Test MCP server connectivity (--bearer for first-party endpoints)
+    tools           List tools exposed by an MCP server (--bearer for first-party endpoints)
+    connect         Connect any MCP client (Claude Code, Codex, Cursor, ...) to Workato AIRO
+                    or a managed MCP server
+    auth-header     Print the profile's Authorization header as JSON, for MCP client header helpers
     servers (server)
       list          List MCP servers
       get           Get MCP server details
@@ -138,6 +181,7 @@ Available on all commands:
 | Flag | Description |
 |---|---|
 | `--json`, `-j` | Output as JSON |
+| `--raw` | Print the Workato API's response bodies verbatim instead of `wk`'s JSON (implies `--json`) |
 | `--verbose` | Enable debug logging |
 | `--quiet`, `-q` | Suppress non-essential output |
 | `--profile`, `-p` | Override active workspace profile |
