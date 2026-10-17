@@ -128,6 +128,7 @@ func TestSaveProfileUniqueness(t *testing.T) {
 	p1 := &Profile{
 		Name:        "dev",
 		Workspace:   "acme-corp",
+		WorkspaceID: 1001,
 		Environment: "dev",
 		Region:      RegionUS,
 		StoreType:   StoreKeychain,
@@ -141,6 +142,7 @@ func TestSaveProfileUniqueness(t *testing.T) {
 	p2 := &Profile{
 		Name:        "dev-alias",
 		Workspace:   "acme-corp",
+		WorkspaceID: 1001,
 		Environment: "dev",
 		Region:      RegionUS,
 		StoreType:   StoreKeychain,
@@ -158,6 +160,7 @@ func TestSaveProfileUniqueness(t *testing.T) {
 	p1Updated := &Profile{
 		Name:        "dev",
 		Workspace:   "acme-corp",
+		WorkspaceID: 1001,
 		Environment: "dev",
 		Region:      RegionUS,
 		StoreType:   StoreKeychain,
@@ -171,6 +174,7 @@ func TestSaveProfileUniqueness(t *testing.T) {
 	p3 := &Profile{
 		Name:        "prod",
 		Workspace:   "acme-corp",
+		WorkspaceID: 1001,
 		Environment: "prod",
 		Region:      RegionUS,
 		StoreType:   StoreKeychain,

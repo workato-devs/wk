@@ -3,9 +3,11 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -140,5 +142,78 @@ func TestClient_Initialize_HTTPError(t *testing.T) {
 	_, err := client.Initialize(context.Background())
 	if err == nil {
 		t.Fatal("expected error for HTTP 500")
+	}
+}
+
+// initServer answers initialize and records every request's method and
+// Authorization header.
+func initServer(t *testing.T) (*httptest.Server, *[]string, *[]string) {
+	t.Helper()
+	var methods, auths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var msg struct {
+			Method string `json:"method"`
+		}
+		json.NewDecoder(r.Body).Decode(&msg)
+		methods = append(methods, msg.Method)
+		auths = append(auths, r.Header.Get("Authorization"))
+		if msg.Method == "notifications/initialized" {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": map[string]any{
+			"protocolVersion": "2024-11-05", "serverInfo": map[string]any{"name": "s", "version": "1"},
+		}})
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &methods, &auths
+}
+
+// The MCP lifecycle requires notifications/initialized after initialize.
+func TestClient_Initialize_SendsInitializedNotification(t *testing.T) {
+	srv, methods, _ := initServer(t)
+	if _, err := NewClient(srv.URL).Initialize(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(*methods) != 2 || (*methods)[0] != "initialize" || (*methods)[1] != "notifications/initialized" {
+		t.Errorf("methods = %v, want initialize then notifications/initialized", *methods)
+	}
+}
+
+func TestClient_WithBearer(t *testing.T) {
+	srv, _, auths := initServer(t)
+	if _, err := NewClient(srv.URL).WithBearer("tok123").Initialize(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for i, a := range *auths {
+		if a != "Bearer tok123" {
+			t.Errorf("request %d Authorization = %q, want Bearer tok123", i, a)
+		}
+	}
+
+	srv2, _, auths2 := initServer(t)
+	NewClient(srv2.URL).Initialize(context.Background())
+	if (*auths2)[0] != "" {
+		t.Errorf("Authorization sent without WithBearer: %q", (*auths2)[0])
+	}
+}
+
+// A 401 keeps the body and the WWW-Authenticate challenge, which say why.
+func TestClient_HTTPErrorKeepsBodyAndChallenge(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="https://x/.well-known/oauth-protected-resource"`)
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"reason":"authentication_failed"}`))
+	}))
+	defer srv.Close()
+
+	_, err := NewClient(srv.URL).Initialize(context.Background())
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("err = %v, want an *HTTPError", err)
+	}
+	if httpErr.StatusCode != 401 || !strings.Contains(httpErr.Body, "authentication_failed") || !strings.Contains(httpErr.WWWAuthenticate, "resource_metadata") {
+		t.Errorf("HTTPError = %+v", httpErr)
 	}
 }

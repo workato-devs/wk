@@ -2,27 +2,32 @@ package config
 
 import (
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestValidateLocalPath_StringLevelRejections(t *testing.T) {
 	cases := []struct {
-		name    string
-		local   string
-		wantSub string
+		name        string
+		local       string
+		wantSub     string
+		windowsOnly bool // a drive letter only escapes the project root on Windows
 	}{
-		{"empty string", "", "cannot be empty"},
-		{"null byte", "foo\x00bar", "null byte"},
-		{"absolute path", "/tmp/evil", "must be relative"},
-		{"absolute path windows drive", `C:\Windows\evil`, "must be relative"},
-		{"rooted backslash", `\evil`, "must be relative"},
-		{"bare parent traversal", "..", "escapes the project root"},
-		{"leading parent traversal", "../evil", "escapes the project root"},
-		{"deeper traversal collapse", "./foo/../../evil", "escapes the project root"},
+		{"empty string", "", "cannot be empty", false},
+		{"null byte", "foo\x00bar", "null byte", false},
+		{"absolute path", "/tmp/evil", "must be relative", false},
+		{"absolute path windows drive", `C:\Windows\evil`, "must be relative", true},
+		{"rooted backslash", `\evil`, "must be relative", false},
+		{"bare parent traversal", "..", "escapes the project root", false},
+		{"leading parent traversal", "../evil", "escapes the project root", false},
+		{"deeper traversal collapse", "./foo/../../evil", "escapes the project root", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.windowsOnly && runtime.GOOS != "windows" {
+				t.Skip("drive-letter paths are a single relative name outside Windows")
+			}
 			err := ValidateLocalPath("", tc.local)
 			if err == nil {
 				t.Fatalf("err = nil, want error containing %q", tc.wantSub)

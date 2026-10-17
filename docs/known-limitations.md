@@ -30,13 +30,16 @@ Access to core recipe-building features within projects.
 | Permission | Status | `wk` commands | Notes |
 |---|---|---|---|
 | Projects & folders | ✅ | `wk folders list [--projects]/create/update/delete` | Create/list/update/delete for folders and projects + `GET /projects`; update/delete route by `is_project`. |
+| Resources | ❌ | — | Static assets (`/api/static_assets/files`: list, upload, download, delete). No `wk` command. |
 | Connections | ✅ | `wk connections list/get/create/update/delete/disconnect` | |
 | Recipes | ✅ | `wk recipes list/get/start/stop/export/import/update/delete/move/copy/pull` | Full CRUD + lifecycle. |
-| Genies | ❌ | — | No `wk` command. |
-| Knowledge bases | ❌ | — | No `wk` command. |
-| Skills | ✅ | `wk agentic skills list/get/create` | Covers the operations the Skills API exposes. |
+| Genies | ⚠️ | `wk agentic genies list/get/create/update/delete/start/stop`, `assign-`/`remove-` `skills`/`knowledge-bases`/`user-groups`; `wk agentic guardrails get/pii-entities`; `wk agentic logs conversations/conversation/events` | 18 of 20. Not wired: **Update guardrail policy** (cut: guardrails are beta, and a wrong full-replace write can quietly weaken a genie's protections; ADR-009) and **List genie interfaces** (`GET /api/agentic/genies/:genie_id/interfaces`, not in the API reference). Assignments are reconciled, because the API silently accepts unknown IDs. Deleting a genie also deletes its clients. |
+| Genie clients | ✅ | `wk agentic clients list/get/create/update/delete/regenerate/start/pause/attach/detach` | A client serves one genie; a genie can have several clients. A paused client reports `inactive` and stays attached. |
+| Knowledge bases | ⚠️ | `wk agentic kb list/get/create/update/delete/recipes/data-sources` | 7 of 12. Not wired: the five **document** endpoints (list, get, presigned upload URL, start ingestion, delete). Matrix knowledge bases' data sources can't be set: the API accepts `data_sources` but applied none of the shapes tried, and the valid names are undocumented (ADR-009 Decision 5). A knowledge base can't be moved to another folder (the API rejects it). |
+| Skills | ✅ | `wk agentic skills list/get/create` | Covers the operations the Skills API exposes. The API has no delete: a skill created here can be removed only in the UI, and it outlives its recipe. |
 | MCP servers | ✅ | `wk mcp servers/tools/test/user-groups` (+ policies) | Full management. Platform caveat: new servers default to `hashed_token` with no API-retrievable token (UI-reveal only) — a platform gap, not a CLI gap. |
 | Recipe Versions | ✅ | `wk recipes versions list/get/comment` | |
+| Recipe searches | ❌ | — | AIRO-related; not planned for `wk`. |
 | Jobs | ✅ | `wk recipes jobs list/get/retry` | `jobs get` now surfaces per-step `input`/`output`/`error`/`error_details` (issue #89). |
 | Tag Assignments | ✅ | `wk tags assign` | Assign/remove tags on recipes and connections. |
 | Test Cases | ❌ | — | No `wk` command. |
@@ -70,6 +73,18 @@ Access to data and features configured at the workspace level.
 | Event Streams | ❌ | — | No `wk` command. |
 | Event Streams topics | ❌ | — | No `wk` command. |
 | Environment properties | ✅ | `wk workspace properties list/set` | |
+
+### AIRO MCP tools
+
+| Permission | Status | `wk` commands | Notes |
+|---|---|---|---|
+| AIRO MCP Server | n/a | `wk mcp connect airo` (setup only) | `wk` sets up an MCP client's connection to AIRO MCP and isn't involved after that; agents call AIRO's tools directly (ADR-008). Only `--auth token` needs this permission on the profile's API client role: the token then acts as the **workspace owner**, and this one permission grants every AIRO tool, unrestricted by other role privileges or project access. The default `--auth oauth` acts as the signed-in user instead. **OAuth follows Workato's documented setup but hasn't been verified end to end by the `wk` team** (no production workspace was available), and Developer Sandbox (trial) doesn't support it. |
+
+### supplementary tools for AIRO
+
+| Permission | Status | `wk` commands | Notes |
+|---|---|---|---|
+| AIRO | ❌ | — | `GET /api/airo/knowledge_bases`. Deliberately not wired: the endpoint is undocumented, and Agent Studio knowledge bases are covered by `wk agentic kb` (ADR-008 Decision 2). |
 
 ### API platform
 

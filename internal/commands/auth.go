@@ -246,13 +246,18 @@ requires --token and --environment explicitly. See ADR-006.`,
 				profile.StoreType = auth.StoreKeychain
 				cred.StoreType = auth.StoreKeychain
 
+				// Saved before the token so the duplicate-target check runs
+				// before anything touches the keychain; rolled back below if
+				// the token can't be stored, so a failed login never leaves a
+				// profile with no token behind.
+				previous, _ := pm.GetProfile(name)
 				if err := pm.SaveProfile(profile); err != nil {
 					return fmt.Errorf("saving profile: %w", err)
 				}
 
 				store := &auth.KeyringStore{}
 				if err := store.Set(cmd.Context(), name, cred); err != nil {
-					return fmt.Errorf("storing credential: %w", err)
+					return keychainSetError(pm, name, previous, err)
 				}
 
 				if err := pm.SetActiveProfile(name); err != nil {
@@ -529,6 +534,19 @@ func newAuthListCmd() *cobra.Command {
 				return err
 			}
 
+			// --store-type narrows the list to one store (#105). Without it,
+			// keychain profiles are listed and file-store profiles are merged
+			// in when inside a project with profiles.env.
+			switch flagStoreType {
+			case "", string(auth.StoreKeychain), string(auth.StoreFile):
+			default:
+				return fmt.Errorf("unknown --store-type %q; valid: %s, %s",
+					flagStoreType, auth.StoreKeychain, auth.StoreFile)
+			}
+			if flagStoreType == string(auth.StoreFile) {
+				profiles = nil
+			}
+
 			activeName, _ := pm.GetActiveProfile()
 			keychainNames := make(map[string]bool, len(profiles))
 			for _, p := range profiles {
@@ -537,33 +555,90 @@ func newAuthListCmd() *cobra.Command {
 
 			headers := []string{"NAME", "WORKSPACE", "ENVIRONMENT", "REGION", "STORE", "ACTIVE"}
 			var rows [][]string
+			var items []profileListItem
 			for _, p := range profiles {
 				rows = append(rows, profileRow(p, activeName == p.Name, false))
+				items = append(items, profileListItem{Profile: p, Active: activeName == p.Name})
 			}
 
-			// Merge file-store profiles when inside a project with profiles.env.
-			if cwd, werr := os.Getwd(); werr == nil {
-				if root, rerr := config.FindProjectRoot(cwd); rerr == nil {
-					fs := auth.NewFileStore(root)
-					if fs.Exists() {
-						fileProfiles, ferr := fs.ListProfiles()
-						if ferr != nil {
-							fmt.Fprintf(os.Stderr, "Warning: could not read %s: %v\n", fs.Path, ferr)
-						}
-						for _, p := range fileProfiles {
-							rows = append(rows, profileRow(p, false, keychainNames[p.Name]))
+			var fs *auth.FileStore
+			switch flagStoreType {
+			case string(auth.StoreFile):
+				// Explicitly requested: fail the same way every other command
+				// does when there's no project or no profiles.env.
+				if fs, err = fileStoreForCwd(); err != nil {
+					return err
+				}
+			case "":
+				if cwd, werr := os.Getwd(); werr == nil {
+					if root, rerr := config.FindProjectRoot(cwd); rerr == nil {
+						if candidate := auth.NewFileStore(root); candidate.Exists() {
+							fs = candidate
 						}
 					}
 				}
 			}
+			if fs != nil {
+				fileProfiles, ferr := fs.ListProfiles()
+				if ferr != nil {
+					if flagStoreType == string(auth.StoreFile) {
+						return fmt.Errorf("reading %s: %w", fs.Path, ferr)
+					}
+					fmt.Fprintf(os.Stderr, "Warning: could not read %s: %v\n", fs.Path, ferr)
+				}
+				for _, p := range fileProfiles {
+					rows = append(rows, profileRow(p, false, keychainNames[p.Name]))
+					items = append(items, profileListItem{Profile: p, Shadowed: keychainNames[p.Name]})
+				}
+			}
 
-			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+			if len(items) == 0 {
+				if flagJSON {
+					return rctx.Formatter.FormatList(os.Stdout, items, nil, nil)
+				}
+				if !rctx.Quiet {
+					fmt.Fprintln(os.Stderr, "No auth profiles found. Add one with: wk auth login")
+				}
+				return nil
+			}
+
+			return rctx.Formatter.FormatList(os.Stdout, items, headers, rows)
 		},
 	}
 }
 
 // profileRow formats one auth-list row. When shadowed is true, the name is
 // annotated to show that keychain routing would shadow this file-store entry.
+// keychainSetError rolls back a profile saved just before its token failed to
+// reach the OS keychain (restoring the previous profile of that name, if any),
+// and returns an error that says what happened and how to proceed.
+func keychainSetError(pm *auth.ProfileManager, name string, previous *auth.Profile, setErr error) error {
+	var rollbackErr error
+	state := "was not saved"
+	if previous != nil {
+		rollbackErr = pm.SaveProfile(previous)
+		state = "was left unchanged"
+	} else {
+		rollbackErr = pm.DeleteProfile(name)
+	}
+	if rollbackErr != nil {
+		return fmt.Errorf("storing the token in the OS keychain failed (%v), and restoring profile %q also failed (%v); it may have no token: rerun wk auth login, or remove it with: wk auth delete %s",
+			setErr, name, rollbackErr, name)
+	}
+	return fmt.Errorf("storing the token in the OS keychain failed (%v), so profile %q %s. To keep the token in a project file instead, rerun with --store-type file",
+		setErr, name, state)
+}
+
+// profileListItem is one `wk auth list --json` entry: the profile plus the
+// two facts the table shows as decorations ("*" and "(shadowed)").
+type profileListItem struct {
+	*auth.Profile
+	Active bool `json:"active"`
+	// Shadowed marks a profiles.env profile hidden by a keychain profile of
+	// the same name.
+	Shadowed bool `json:"shadowed,omitempty"`
+}
+
 func profileRow(p *auth.Profile, isActive, shadowed bool) []string {
 	active := ""
 	if isActive {

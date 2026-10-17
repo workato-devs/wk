@@ -54,7 +54,7 @@ func newConnectorsListCmd() *cobra.Command {
 				}
 				rows = append(rows, []string{strconv.Itoa(c.ID), c.Name, c.Title, released})
 			}
-			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+			return rctx.Formatter.FormatList(os.Stdout, connectors, headers, rows)
 		},
 	}
 

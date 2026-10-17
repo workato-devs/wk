@@ -91,7 +91,7 @@ func newWorkspaceUsersCmd() *cobra.Command {
 					m.Email,
 				})
 			}
-			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+			return rctx.Formatter.FormatList(os.Stdout, members, headers, rows)
 		},
 	}
 
@@ -142,7 +142,7 @@ func newWorkspaceAuditLogCmd() *cobra.Command {
 					e.Timestamp,
 				})
 			}
-			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+			return rctx.Formatter.FormatList(os.Stdout, entries, headers, rows)
 		},
 	}
 
@@ -201,7 +201,7 @@ func newWorkspacePropertiesListCmd() *cobra.Command {
 			for k, v := range props {
 				rows = append(rows, []string{k, v})
 			}
-			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+			return rctx.Formatter.FormatList(os.Stdout, props, headers, rows)
 		},
 	}
 

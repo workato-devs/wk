@@ -11,13 +11,31 @@ type APIError struct {
 	StatusCode int    `json:"status_code"`
 	Message    string `json:"message"`
 	ErrorType  string `json:"error_type,omitempty"`
+	// Reason is Workato's machine-readable cause, sent on 401s (e.g.
+	// "missing_privilege", "authentication_failed"). A 401 doesn't always
+	// mean bad credentials, so the reason decides the advice.
+	Reason string `json:"reason,omitempty"`
+}
+
+// reasonAdvice says what to do for the 401 reasons Workato has been observed
+// to send (2026-10-16).
+var reasonAdvice = map[string]string{
+	"missing_privilege":     "the profile's API client role doesn't grant the permission this endpoint needs; add it in Workato under Workspace admin > API clients > Client roles (the token itself is fine)",
+	"authentication_failed": "the profile's token was rejected; check the profile is for this workspace and region, or log in again with: wk auth login",
 }
 
 func (e *APIError) Error() string {
+	msg := fmt.Sprintf("API error %d: %s", e.StatusCode, e.Message)
 	if e.ErrorType != "" {
-		return fmt.Sprintf("API error %d (%s): %s", e.StatusCode, e.ErrorType, e.Message)
+		msg = fmt.Sprintf("API error %d (%s): %s", e.StatusCode, e.ErrorType, e.Message)
 	}
-	return fmt.Sprintf("API error %d: %s", e.StatusCode, e.Message)
+	if e.Reason != "" {
+		msg += " (reason: " + e.Reason + ")"
+		if advice, ok := reasonAdvice[e.Reason]; ok {
+			msg += "; " + advice
+		}
+	}
+	return msg
 }
 
 // Is maps HTTP status codes to the sentinel errors in internal/errors so

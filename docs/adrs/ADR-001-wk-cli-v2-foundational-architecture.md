@@ -1,10 +1,15 @@
 # ADR-001: Workato CLI v2 (`wk`) — Foundational Architecture
 
 **Author(s):** Zayne Turner
+**Amended-by:** Claude [role: assistant; harness: Claude Code; model: Opus 5], dir. Zayne Turner — August 2026
 **Status:** Proposed
 **Date:** March 3, 2026
 **Deciders:** DevRel Engineering, Platform CLI Team, Developer Experience Lead
 **Supersedes:** n/a (greenfield rewrite)
+**References:** ADR-009 (Agent Studio DX Completeness) — reasoning for the `--raw` flag
+
+**Amendments:**
+- August 2026 — Added `--raw` to the cross-cutting flags (Decision 3): `--json` is `wk`'s modeled contract, `--raw` is the API response verbatim. Reasoning in ADR-009 Decision 6.
 
 ---
 
@@ -153,6 +158,19 @@ This pattern was chosen over alternatives:
 - **Flat command namespace** (e.g., `wk list-recipes`): Doesn't scale. With 60+ commands across 10+ resources, a flat namespace becomes unnavigable.
 
 Every command supports `--json`, `--toml`, `--quiet`, `--verbose`, `--profile` (override active auth profile by name), `--no-color`, and `--timeout` as cross-cutting flags. Non-interactive mode is the default when stdout is not a teletypewriter (TTY) — i.e., when the output is being piped to another program or captured by a script rather than displayed in a human's terminal, ensuring agent and CI compatibility without requiring explicit flags.
+
+> **Amendment (August 2026): `--raw` joins the cross-cutting flags.**
+> `--json` marshals `wk`'s own structs, so it renders a *modeled* view: normalized timestamps, and
+> only the fields `wk` models. That is deliberate and worth keeping — it gives callers a shape that
+> stays consistent across resources — but it means `--json` is `wk`'s contract, **not** the API's,
+> and fields `wk` does not model are dropped without warning.
+>
+> `--raw` emits the API response body verbatim: no struct round-trip, no normalization, no field
+> filtering. The two answer different questions — *"what does `wk` model?"* versus *"what did the
+> platform actually send?"* — and both are legitimate, so neither should be inferred from the other.
+>
+> The full reasoning lives in **ADR-009 Decision 6**, which is where the problem was found (three
+> timestamp formats in one API family, and unmodelled fields on existing resources). Not restated here — this note exists so the flag list stays authoritative.
 
 ---
 

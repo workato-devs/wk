@@ -96,13 +96,20 @@ func newPluginsInstallCmd() *cobra.Command {
 				return err
 			}
 
-			if err := registry.Install(source); err != nil {
+			installed, err := registry.Install(source)
+			if err != nil {
 				return err
+			}
+			if installed.CopiedAll && !rctx.Quiet {
+				fmt.Fprintf(os.Stderr,
+					"warning: %s/plugin.toml declares no `files`, so the whole directory was copied into the plugin registry. "+
+						"To install only what the plugin needs, list its supporting files in plugin.toml, e.g. files = [\"profiles/*.json\"]\n",
+					source)
 			}
 
 			m, _ := plugin.LoadManifest(manifestPath)
 			if flagJSON {
-				result := map[string]string{"status": "installed", "path": source}
+				result := map[string]any{"status": "installed", "path": source, "copied_all": installed.CopiedAll}
 				if m != nil {
 					result["name"] = m.Name
 					result["version"] = m.Version
@@ -144,6 +151,9 @@ func newPluginsListCmd() *cobra.Command {
 			}
 
 			if len(plugins) == 0 {
+				if flagJSON {
+					return rctx.Formatter.FormatList(os.Stdout, plugins, nil, nil)
+				}
 				fmt.Fprintln(os.Stderr, "No plugins installed.")
 				return nil
 			}
@@ -153,7 +163,7 @@ func newPluginsListCmd() *cobra.Command {
 			for _, p := range plugins {
 				rows = append(rows, []string{p.Name, p.Version, p.Dir})
 			}
-			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+			return rctx.Formatter.FormatList(os.Stdout, plugins, headers, rows)
 		},
 	}
 }

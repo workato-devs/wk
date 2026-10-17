@@ -5,6 +5,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 
 	wkerrors "github.com/workato-devs/wk/internal/errors"
 )
@@ -16,9 +18,9 @@ type Registry struct {
 
 // InstalledPlugin describes a plugin found in the registry.
 type InstalledPlugin struct {
-	Name    string
-	Version string
-	Dir     string
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Dir     string `json:"dir"`
 }
 
 // NewRegistry creates a Registry with the default directory (~/.wk/plugins/).
@@ -40,13 +42,33 @@ func NewRegistry() (*Registry, error) {
 	return &Registry{Dir: dir}, nil
 }
 
-// Install copies a plugin from source into the registry.
-// It reads the plugin.toml at source to determine the plugin name.
-func (r *Registry) Install(source string) error {
+// InstallResult reports how a plugin was installed.
+type InstallResult struct {
+	Name string
+	// CopiedAll is true when the manifest declares no `files`, so the whole
+	// source directory was copied. Callers should warn: from a source
+	// checkout that includes everything in the repo (#101).
+	CopiedAll bool
+}
+
+// Install copies a plugin from source into the registry. It reads the
+// plugin.toml at source to determine the plugin name. When the manifest
+// declares `files`, only plugin.toml, the entrypoint, and those files are
+// copied; otherwise the whole source directory is.
+func (r *Registry) Install(source string) (*InstallResult, error) {
 	manifestPath := filepath.Join(source, "plugin.toml")
 	m, err := LoadManifest(manifestPath)
 	if err != nil {
-		return fmt.Errorf("reading plugin manifest: %w", err)
+		return nil, fmt.Errorf("reading plugin manifest: %w", err)
+	}
+
+	// Resolve everything to copy before touching an existing installation,
+	// so a bad manifest can't leave the plugin uninstalled.
+	var paths []string
+	if len(m.Files) > 0 {
+		if paths, err = declaredPaths(source, m); err != nil {
+			return nil, err
+		}
 	}
 
 	dest := filepath.Join(r.Dir, m.Name)
@@ -54,14 +76,78 @@ func (r *Registry) Install(source string) error {
 	// Remove existing installation if present
 	if _, err := os.Stat(dest); err == nil {
 		if err := os.RemoveAll(dest); err != nil {
-			return fmt.Errorf("removing existing plugin: %w", err)
+			return nil, fmt.Errorf("removing existing plugin: %w", err)
 		}
 	}
 
-	if err := copyDir(source, dest); err != nil {
-		return fmt.Errorf("installing plugin: %w", err)
+	if paths == nil {
+		if err := copyDir(source, dest); err != nil {
+			return nil, fmt.Errorf("installing plugin: %w", err)
+		}
+		return &InstallResult{Name: m.Name, CopiedAll: true}, nil
 	}
-	return nil
+	for _, rel := range paths {
+		if err := copyDir(filepath.Join(source, rel), filepath.Join(dest, rel)); err != nil {
+			return nil, fmt.Errorf("installing plugin: %w", err)
+		}
+	}
+	return &InstallResult{Name: m.Name}, nil
+}
+
+// declaredPaths returns the source-relative paths an install with declared
+// `files` copies: plugin.toml, the entrypoint (unless absolute), and every
+// match of each pattern. The author stated what ships, so a pattern that
+// matches nothing, a path outside source, or a missing entrypoint is an error.
+func declaredPaths(source string, m *Manifest) ([]string, error) {
+	paths := []string{"plugin.toml"}
+
+	if m.Entrypoint != "" && !filepath.IsAbs(m.Entrypoint) {
+		entry, err := findEntrypoint(source, m.Entrypoint)
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, entry)
+	}
+
+	for _, pattern := range m.Files {
+		if filepath.IsAbs(pattern) {
+			return nil, fmt.Errorf("plugin.toml files entry %q must be relative to the plugin directory", pattern)
+		}
+		matches, err := filepath.Glob(filepath.Join(source, pattern))
+		if err != nil {
+			return nil, fmt.Errorf("plugin.toml files entry %q: %w", pattern, err)
+		}
+		if len(matches) == 0 {
+			return nil, fmt.Errorf("plugin.toml files entry %q matched nothing in %s", pattern, source)
+		}
+		for _, match := range matches {
+			rel, err := filepath.Rel(source, match)
+			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				return nil, fmt.Errorf("plugin.toml files entry %q reaches outside the plugin directory", pattern)
+			}
+			paths = append(paths, rel)
+		}
+	}
+	return paths, nil
+}
+
+// findEntrypoint returns the source-relative path of the entrypoint file.
+// On Windows a manifest usually names the binary without its extension
+// ("./recipe-lint" for recipe-lint.exe) and still runs, because os/exec tries
+// the executable extensions there; install has to find the same file.
+func findEntrypoint(source, entrypoint string) (string, error) {
+	candidates := []string{entrypoint}
+	if runtime.GOOS == "windows" && filepath.Ext(entrypoint) == "" {
+		for _, ext := range []string{".exe", ".cmd", ".bat"} {
+			candidates = append(candidates, entrypoint+ext)
+		}
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(filepath.Join(source, c)); err == nil {
+			return filepath.Clean(c), nil
+		}
+	}
+	return "", fmt.Errorf("plugin entrypoint %q not found in %s", entrypoint, source)
 }
 
 // List scans the registry directory for installed plugins.
@@ -108,7 +194,7 @@ func (r *Registry) GetPluginDir(name string) (string, error) {
 	return dir, nil
 }
 
-// copyDir recursively copies src to dst.
+// copyDir recursively copies src to dst. src may also be a single file.
 func copyDir(src, dst string) error {
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -132,6 +218,9 @@ func copyDir(src, dst string) error {
 
 		info, err := d.Info()
 		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 			return err
 		}
 		return os.WriteFile(target, data, info.Mode())

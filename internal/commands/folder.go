@@ -120,7 +120,7 @@ func newFoldersListCmd() *cobra.Command {
 						f.Name,
 					})
 				}
-				return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+				return rctx.Formatter.FormatList(os.Stdout, folders, headers, rows)
 			}
 
 			headers := []string{"ID", "NAME", "PARENT ID"}
@@ -136,7 +136,7 @@ func newFoldersListCmd() *cobra.Command {
 					parent,
 				})
 			}
-			return rctx.Formatter.FormatList(os.Stdout, headers, rows)
+			return rctx.Formatter.FormatList(os.Stdout, folders, headers, rows)
 		},
 	}
 

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/workato-devs/wk/internal/version"
@@ -19,6 +20,7 @@ type HTTPClient struct {
 	token      string
 	httpClient *http.Client
 	verbose    bool
+	recorder   ResponseRecorder
 
 	recipes        *recipeService
 	connections    *connectionService
@@ -29,6 +31,11 @@ type HTTPClient struct {
 	apiEndpoints   *apiEndpointService
 	apiClients     *apiClientService
 	skills         *skillService
+	genies         *genieService
+	kbs            *knowledgeBaseService
+	genieClients   *genieClientService
+	guardrails     *guardrailService
+	conversations  *conversationService
 	mcpServers     *mcpServerService
 	workspace      *workspaceService
 	connectors     *connectorService
@@ -49,6 +56,31 @@ func WithVerbose(v bool) ClientOption {
 	return func(c *HTTPClient) {
 		c.verbose = v
 	}
+}
+
+// ResponseRecorder receives the body of every successful JSON response, exactly
+// as the API sent it. It backs the global --raw flag.
+type ResponseRecorder interface {
+	RecordResponse(body []byte)
+}
+
+// WithResponseRecorder records successful JSON response bodies.
+func WithResponseRecorder(r ResponseRecorder) ClientOption {
+	return func(c *HTTPClient) {
+		c.recorder = r
+	}
+}
+
+// record passes a successful response body to the recorder, if any. Only JSON
+// is recorded, so a binary download (e.g. a package zip) never reaches --raw.
+func (c *HTTPClient) record(resp *http.Response, body []byte) {
+	if c.recorder == nil || len(body) == 0 {
+		return
+	}
+	if !strings.Contains(resp.Header.Get("Content-Type"), "json") {
+		return
+	}
+	c.recorder.RecordResponse(body)
 }
 
 // WithHTTPClient sets a custom http.Client.
@@ -136,6 +168,41 @@ func (c *HTTPClient) Skills() SkillService {
 	return c.skills
 }
 
+func (c *HTTPClient) Genies() GenieService {
+	if c.genies == nil {
+		c.genies = &genieService{client: c}
+	}
+	return c.genies
+}
+
+func (c *HTTPClient) KnowledgeBases() KnowledgeBaseService {
+	if c.kbs == nil {
+		c.kbs = &knowledgeBaseService{client: c}
+	}
+	return c.kbs
+}
+
+func (c *HTTPClient) GenieClients() GenieClientService {
+	if c.genieClients == nil {
+		c.genieClients = &genieClientService{client: c}
+	}
+	return c.genieClients
+}
+
+func (c *HTTPClient) Guardrails() GuardrailService {
+	if c.guardrails == nil {
+		c.guardrails = &guardrailService{client: c}
+	}
+	return c.guardrails
+}
+
+func (c *HTTPClient) Conversations() ConversationService {
+	if c.conversations == nil {
+		c.conversations = &conversationService{client: c}
+	}
+	return c.conversations
+}
+
 func (c *HTTPClient) MCPServers() MCPServerService {
 	if c.mcpServers == nil {
 		c.mcpServers = &mcpServerService{client: c}
@@ -208,18 +275,36 @@ func (c *HTTPClient) do(ctx context.Context, method, path string, body, result a
 			Message   string `json:"message"`
 			Error     string `json:"error"`
 			ErrorType string `json:"error_type"`
+			Reason    string `json:"reason"`
+			// Agent Studio's shape: {"errors":[{"code":400,"title":"…"}]}.
+			// 422s add the actual cause as "detail" under a generic title.
+			Errors []struct {
+				Title  string `json:"title"`
+				Detail string `json:"detail"`
+			} `json:"errors"`
 		}
 		if json.Unmarshal(respBody, &errResp) == nil {
 			if errResp.Message != "" {
 				apiErr.Message = errResp.Message
 			} else if errResp.Error != "" {
 				apiErr.Message = errResp.Error
+			} else if len(errResp.Errors) > 0 && errResp.Errors[0].Title != "" {
+				titles := make([]string, 0, len(errResp.Errors))
+				for _, e := range errResp.Errors {
+					if e.Detail != "" {
+						e.Title += ": " + e.Detail
+					}
+					titles = append(titles, e.Title)
+				}
+				apiErr.Message = strings.Join(titles, "; ")
 			}
 			apiErr.ErrorType = errResp.ErrorType
+			apiErr.Reason = errResp.Reason
 		}
 		return apiErr
 	}
 
+	c.record(resp, respBody)
 	if result != nil && len(respBody) > 0 {
 		if err := json.Unmarshal(respBody, result); err != nil {
 			return fmt.Errorf("decoding response: %w", err)
@@ -275,5 +360,6 @@ func (c *HTTPClient) doRaw(ctx context.Context, method, path string, body any) (
 			Message:    string(data),
 		}
 	}
+	c.record(resp, data)
 	return data, nil
 }

@@ -68,6 +68,26 @@ func TestHTTPClientDo_NotFound(t *testing.T) {
 	}
 }
 
+// Agent Studio's 422s put the cause in "detail" under a generic "title"
+// (captured live from a duplicate-name KB create); dropping it leaves the
+// caller with no way to correct the request.
+func TestHTTPClientDo_AgentStudioErrorDetail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(422)
+		w.Write([]byte(`{"errors":[{"code":422,"title":"Create knowledge base failed","detail":"Name has already been taken"}]}`))
+	}))
+	defer srv.Close()
+
+	err := NewHTTPClient(srv.URL, "test-token").do(context.Background(), "POST", "/agentic/knowledge_bases", nil, nil)
+	apiErr, ok := err.(*APIError)
+	if !ok {
+		t.Fatalf("expected APIError, got %T", err)
+	}
+	if want := "Create knowledge base failed: Name has already been taken"; apiErr.Message != want {
+		t.Errorf("message = %q, want %q", apiErr.Message, want)
+	}
+}
+
 func TestHTTPClientDo_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
@@ -121,5 +141,43 @@ func TestPackageImport_RestartRecipesParam(t *testing.T) {
 				t.Errorf("import ID = %d, want 99", id)
 			}
 		})
+	}
+}
+
+type recorder struct{ bodies [][]byte }
+
+func (r *recorder) RecordResponse(b []byte) { r.bodies = append(r.bodies, b) }
+
+// --raw records each successful JSON body verbatim, and never a binary one.
+func TestHTTPClient_ResponseRecorder(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/json":
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.Write([]byte(`{"id": 1, "unmodeled_field": "kept"}`))
+		case "/zip":
+			w.Header().Set("Content-Type", "application/zip")
+			w.Write([]byte("PK\x03\x04"))
+		case "/err":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"message":"nope"}`))
+		}
+	}))
+	defer srv.Close()
+	rec := &recorder{}
+	c := NewHTTPClient(srv.URL, "tok", WithResponseRecorder(rec))
+
+	var v struct{ ID int }
+	if err := c.do(context.Background(), "GET", "/json", nil, &v); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.doRaw(context.Background(), "GET", "/zip", nil); err != nil {
+		t.Fatal(err)
+	}
+	_ = c.do(context.Background(), "GET", "/err", nil, nil)
+
+	if len(rec.bodies) != 1 || string(rec.bodies[0]) != `{"id": 1, "unmodeled_field": "kept"}` {
+		t.Errorf("recorded = %q, want only the JSON success body, verbatim", rec.bodies)
 	}
 }

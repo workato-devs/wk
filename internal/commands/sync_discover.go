@@ -94,7 +94,7 @@ entries for them.`,
 				}
 				tableRows = append(tableRows, []string{r.Folder, status})
 			}
-			return rctx.Formatter.FormatList(os.Stdout, headers, tableRows)
+			return rctx.Formatter.FormatList(os.Stdout, rows, headers, tableRows)
 		},
 	}
 	return cmd

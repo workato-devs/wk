@@ -184,11 +184,7 @@ func (e *SyncEngine) extractOneFile(f *zip.File, localDir, serverPath, relPath, 
 		return PullResult{}, fmt.Errorf("reading %s in zip: %w", f.Name, err)
 	}
 
-	if isJSON(relPath) {
-		if normalized, nerr := normalizeJSON(data); nerr == nil {
-			data = normalized
-		}
-	}
+	data = pulledBytes(relPath, data)
 
 	newHash := ComputeHash(data)
 
@@ -380,6 +376,19 @@ func isInsideDir(absPath, baseDir string) bool {
 // isJSON returns true if the file path has a .json extension.
 func isJSON(path string) bool {
 	return strings.HasSuffix(strings.ToLower(path), ".json")
+}
+
+// pulledBytes returns data as pull writes it to disk: JSON is normalized,
+// everything else (including JSON that fails to parse) is unchanged. Diff
+// hashes remote files through this too, so its hashes match the ones pull
+// records (#102).
+func pulledBytes(path string, data []byte) []byte {
+	if isJSON(path) {
+		if normalized, err := normalizeJSON(data); err == nil {
+			return normalized
+		}
+	}
+	return data
 }
 
 // normalizeJSON re-serializes JSON with sorted keys and consistent indentation.

@@ -43,8 +43,12 @@ type RunContext struct {
 	Quiet          bool
 }
 
+// rawResponses collects API response bodies for --raw; reset per run.
+var rawResponses = &output.ResponseBuffer{}
+
 var (
 	flagJSON      bool
+	flagRaw       bool
 	flagVerbose   bool
 	flagQuiet     bool
 	flagProfile   string
@@ -65,6 +69,15 @@ sync operations, and plugins from your terminal or CI/CD pipeline.
 Every command supports --json for machine-readable output.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// --raw takes each command's JSON path, so it implies --json (and,
+		// like --json, non-interactive mode).
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if flagRaw {
+				flagJSON = true
+				rawResponses = &output.ResponseBuffer{}
+			}
+			return nil
+		},
 	}
 
 	pf := root.PersistentFlags()
@@ -72,6 +85,7 @@ Every command supports --json for machine-readable output.`,
 	// have a legitimate claim to it and the ambiguity isn't worth the
 	// keystroke. --verbose stays long-only.
 	pf.BoolVarP(&flagJSON, "json", "j", false, "Output as JSON")
+	pf.BoolVar(&flagRaw, "raw", false, "Print the Workato API's response body verbatim instead of wk's JSON (implies --json)")
 	pf.BoolVar(&flagVerbose, "verbose", false, "Enable verbose/debug logging")
 	pf.BoolVarP(&flagQuiet, "quiet", "q", false, "Suppress non-essential output")
 	pf.StringVarP(&flagProfile, "profile", "p", "", "Override active auth profile")
@@ -93,8 +107,12 @@ func BuildRunContext(cmd *cobra.Command) (*RunContext, error) {
 		format = "json"
 	}
 
+	formatter := output.NewFormatter(format)
+	if flagRaw {
+		formatter = &output.RawFormatter{Responses: rawResponses}
+	}
 	rctx := &RunContext{
-		Formatter: output.NewFormatter(format),
+		Formatter: formatter,
 		Verbose:   flagVerbose,
 		Quiet:     flagQuiet,
 	}

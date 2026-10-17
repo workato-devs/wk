@@ -4,10 +4,172 @@ All notable changes to `wk` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.1.0] - 2026-10-17
+
+### Added
+
+- `wk mcp connect airo` sets up any MCP client's connection to Workato AIRO
+  MCP. `wk` isn't involved in any request after that, and never writes a
+  credential into a client's config.
+  - Without `--client`, it prints the connection details in a client-neutral
+    form any MCP client can use: the server URL, how each authentication
+    option works and who it acts as, which workspace to sign in to, and the
+    commands that supply a token. `--json` gives the same structure.
+  - `--client claude-code` and `--client codex` install the server through
+    those clients' own CLIs (`claude mcp add-json`, `codex mcp add`).
+    `--client cursor` prints the exact `~/.cursor/mcp.json` (or project
+    `.cursor/mcp.json`) entry instead of installing it, because `cursor
+    --add-mcp` writes a settings file Cursor's agent doesn't read servers
+    from. An unknown client gets the neutral details. `--print` shows a
+    client's config without installing it; `--force` replaces an existing
+    server. `--config-scope` (`local`, `user`, `project`) is where the client
+    saves the entry on your machine; `project` is meant to be committed.
+  - `--auth oauth` (the default) writes only the server URL. The client
+    registers itself, you authorize in the browser, and it then acts as the
+    user who authorized. OAuth connects to whichever workspace the browser is
+    signed in to, so `wk` names the profile's workspace and environment to
+    sign in to first. `wk` checks whether the region's authorization server
+    supports client registration. Developer Sandbox (trial) doesn't, so there
+    `wk` refuses OAuth and points to `--auth token` rather than writing a
+    config that can't sign in. **The OAuth path follows Workato's documented
+    setup but hasn't been verified end to end by the `wk` team**, since no
+    production workspace was available; reports are welcome.
+  - `--auth token` gives the client the profile's API token without copying
+    it: Claude Code runs `wk mcp auth-header` to get it, and Codex and Cursor
+    read it from an environment variable (default `WORKATO_API_TOKEN`) you set
+    from `wk auth token`. A token acts as the **workspace owner**, unrestricted
+    by role or project access, so it's opt-in only and never a fallback. Claude
+    Code runs the header helper only after you've accepted its trust prompt for
+    the folder, so open Claude Code there once before headless use.
+  - `wk mcp connect <mcps-handle>` does the same for a managed MCP server, and
+    the server's authentication method decides how the client signs in.
+    `workato_idp` servers get a URL-only entry, and you sign in as your Workato
+    Identity user. `token` servers have the credential in their URL, so `wk`
+    writes it into a client config only with `--allow-url-token`, never at
+    `project` config scope, and otherwise shows the token as `REDACTED`.
+    `hashed_token` servers (the default for new ones) can't be configured
+    automatically, because Workato doesn't return their token, so `--print`
+    gives the entry with a placeholder for the URL from the Workato UI.
+- `wk mcp auth-header` prints `{"Authorization":"Bearer <token>"}` for a
+  profile, for MCP clients that run a command to get request headers.
+- `wk mcp tools` and `wk mcp test` take `--bearer`, which sends the active
+  profile's API token as a bearer header, so they can reach first-party
+  Workato MCP endpoints such as AIRO MCP (`https://app.<region>.workato.com/airo_mcp`).
+  It's sent only to https Workato hosts; any other URL is refused before the
+  token is read.
+- `wk agentic genies list` and `wk agentic genies get <id>` list and show
+  Agent Studio genies. `list` takes `--folder-id`, `--project-id`, `--state`,
+  `--page` and `--per-page`, and reports whether more pages exist from the
+  API's `total`. `get` adds the fields only the detail endpoint returns
+  (project, folders, user groups, model label, provider). The API reports
+  `state` differently per endpoint (`started`/`stopped` from list,
+  `active`/`inactive` from get) and `wk` shows each as reported. The `--state`
+  filter takes `active` or `inactive`; the API silently ignores any other
+  value and returns every genie, so `wk` rejects it.
+- Agent Studio read commands, with `--json` output that matches what the API
+  sends:
+  - `wk agentic kb list|get|recipes|data-sources`: knowledge bases. `list`
+    takes `--folder-id`, `--project-id`, `--query`, `--page`, `--per-page`.
+  - `wk agentic clients list`: genie Headless API clients.
+  - `wk agentic guardrails get <genie-id>|pii-entities`: guardrail policies
+    (beta; read only). A `404` explains it can mean guardrails aren't enabled
+    in the workspace.
+  - `wk agentic logs conversations <genie-id>`, `logs conversation <genie-id>
+    <conversation-id>` and `logs events <genie-id> <conversation-id>`: what a
+    genie actually did. These are cursor-paginated: `--cursor`/`--limit`, and
+    `--json` wraps results as `{"items", "next_cursor", "has_next"}`. `events`
+    filters with `--event-type` (repeatable) and `--run-id`.
+
+  Timestamps are RFC 3339 in UTC whichever format the API used (epoch
+  milliseconds for conversations, ISO 8601 elsewhere). A `0` timestamp, such
+  as `last_message_at` on a conversation with no messages, is `null`.
+- Genie write commands: `wk agentic genies create|update|delete|start|stop`,
+  and `assign-`/`remove-` `skills`, `knowledge-bases` and `user-groups`.
+  `create` and `update` print the genie as the API then reports it (`update`
+  sends only the fields you pass). `start` and `stop` report the state the
+  genie ends up in and fail if it isn't the expected one. **Assignments are
+  checked, not trusted:** the API answers `200` even when it ignored an ID
+  (unknown knowledge base and user group IDs are dropped silently), so `wk`
+  reads each ID before and after and reports an outcome per ID: `assigned`,
+  `already_assigned`, `removed`, `not_assigned`, `not_found` or `not_applied`.
+  It exits non-zero if any ID was `not_found` or `not_applied`.
+- Knowledge base write commands: `wk agentic kb create|update|delete`.
+  `create` takes `--name` and `--folder-id` (required), `--description` and
+  `--source-type` (`recipe`, the default, or `matrix`). `update` changes only
+  `--name` and `--description`, the only fields the API lets you change, and
+  re-reads the knowledge base to confirm the change took. `wk` rejects input
+  the API would accept and then ignore: any other `--source-type` (the API
+  quietly makes it `recipe`), and a blank name or description (the API answers
+  `200` and changes nothing, so a description can't be cleared). **`delete`
+  refuses a knowledge base that genies use**, naming them, because the API
+  deletes it anyway and detaches it from running genies; `--force` deletes it
+  and `--json` lists the genies it was detached from. Data sources for Matrix
+  knowledge bases can't be set: the API accepts them but didn't apply any we
+  tried.
+- Genie client commands: `wk agentic clients get|create|update|delete|
+  regenerate|start|pause|attach|detach`. A client serves at most one genie, and a genie
+  can have several clients (Workato's reference says the reverse).
+  - `create` takes `--name`, `--type` (`api_key`, the default, or `oauth` with
+    `--redirect-url`) and `--ip-allow-list`. `create` and `regenerate` print an
+    `api_key` client's key, which the API returns only then; `regenerate`
+    makes the old key stop working at once.
+  - `update` changes `--name`, `--ip-allow-list` (replaces the list;
+    `--clear-ip-allow-list` removes every restriction) and, for OAuth clients,
+    `--redirect-url`, then re-reads the client to confirm the change took.
+  - `get` adds the OAuth client ID and redirect URLs that `list` leaves out.
+  - `pause` stops a client from calling its genie without detaching it (its
+    status becomes `inactive`), and `start` resumes it. Each fails if the
+    client doesn't end up in the expected status.
+  - `attach` reports `already_attached` (exit 0) for a client already on that
+    genie. A client on another genie gets an error naming that genie and the
+    `detach` command, in place of the API's bare `409`.
+  - **`delete` refuses a client that's attached to a genie**, because the API
+    deletes it anyway and its credentials stop working while the genie runs;
+    `--force` deletes it, and `detach` keeps it.
+- `wk agentic genies delete --help` now says that deleting a genie also
+  deletes the clients attached to it.
+- `wk agentic skills create` now says, in its help and after creating, that a
+  skill can't be deleted through the API and only the Workato UI can remove it.
+- A global `--raw` flag prints the Workato API's response body verbatim
+  instead of `wk`'s JSON. `--json` is `wk`'s modeled output and includes only
+  the fields `wk` models (`wk connections list --json` shows 8 fields per
+  connection; `--raw` shows the 17 the API sends). `--raw` implies `--json`. A
+  command that makes several API requests prints one response per line, in
+  order, and one that makes none falls back to `wk`'s JSON with a note on
+  stderr. Binary downloads are never printed.
+
+### Changed
+
+- API errors now include Workato's `reason` and what to do about it. A `401`
+  with `missing_privilege` says the API client role lacks the permission and
+  that the token is fine; `authentication_failed` points to the profile and
+  `wk auth login`. Both used to read only `API error 401: Unauthorized`.
+- MCP connection errors now include the server's response body and its
+  `WWW-Authenticate` challenge. A `401` from a Workato endpoint that wants a
+  bearer token says to rerun with `--bearer`, and a rejected token names the
+  profile. The MCP client also sends `notifications/initialized` after the
+  handshake, as the MCP spec requires, and `wk mcp tools --json` keeps each
+  tool's `_meta`.
 
 ### Fixed
 
+- **`wk agentic skills --json` changed shape.** It now matches what the API
+  returns. It gains `type`, `folders`, `genies`, `created_at` and
+  `updated_at`, and loses `recipe_id` and `description`, which the API never
+  sends (`recipe_id` was a copy of `provider_id`). The table's `RECIPE ID`
+  column still shows the recipe, from `provider_id`. `skills list` now decides
+  whether there's another page from the API's `total`, not from whether the
+  page came back full.
+- Agent Studio API errors now show their message: `API error 400: Data
+  sources are only available for Matrix knowledge bases` rather than the raw
+  `{"errors":[…]}` body. When the body also has a `detail`, it's included
+  too: `Create knowledge base failed: Name has already been taken`, not just
+  the generic title.
+- `wk mcp servers token-renew --help` no longer says the new URL is printed in
+  every case. For `hashed_token` servers (the default for new servers), Workato
+  doesn't return the new token: the printed URL has none and won't connect,
+  while the old token has already stopped working. The help now says so and
+  points to the Workato UI.
 - `wk connectors list` now lists the workspace's custom SDK connectors. It was
   calling `GET /integrations`, which is a lookup of built-in platform connector
   metadata by name: with no `?applications=` it returns `{"items": []}` and HTTP
@@ -19,6 +181,79 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   only the ten most recently released connectors. The table gains `ID` and
   `RELEASED` columns and drops `DESCRIPTION`, which this endpoint does not return;
   `--json` now includes `id`, `latest_released_version`, and `released_versions`.
+- `wk workspace audit-log --json` now includes each entry's `resource` and
+  `workspace` objects, as returned by `GET /api/activity_logs`. They were
+  dropped while decoding the response because the struct didn't model them.
+  The table is unchanged. ([#103](https://github.com/workato-devs/wk/issues/103))
+- `wk auth login` no longer rejects a new profile because another profile's
+  workspace has the same display name. The duplicate check compared workspace
+  names from `GET /users/me`, and separate workspaces can share one (for
+  example, several trial workspaces under one account), so the second
+  workspace couldn't be added and `--force` didn't help. It now compares
+  workspace IDs, which also catches the same workspace saved again after a
+  rename. Profiles saved before workspace IDs were recorded are skipped by the
+  check. When a duplicate is real, the error now gives the workspace ID and the
+  two ways forward: use that profile, or `wk auth delete` it first.
+  ([#100](https://github.com/workato-devs/wk/issues/100))
+- `wk plugins install <dir>` can now install only what a plugin needs instead
+  of the whole directory. Run from a source checkout, it copied the entire
+  repo into `~/.wk/plugins/` (852 files, `.git/` included, for `recipe-lint`).
+  `plugin.toml` takes a new optional `files` list, e.g.
+  `files = ["profiles/*.json"]`. When it's present, install copies
+  `plugin.toml`, the entrypoint and those files. A pattern that matches nothing,
+  reaches outside the plugin directory, or a missing entrypoint is an error,
+  and the existing installation is left in place. When it's absent, install
+  copies the whole directory as before and warns, so existing plugins are
+  unaffected. Older `wk` versions ignore the key.
+  `wk plugins install --json` adds `copied_all`.
+  ([#101](https://github.com/workato-devs/wk/issues/101))
+- `wk auth list` now honors `--store-type`. It silently discarded the flag
+  and listed keychain profiles with exit 0, so `--store-type file` outside a
+  project looked like "no file-store profiles" rather than "no project here".
+  With no flag the list is unchanged (keychain profiles, plus `profiles.env`
+  profiles inside a project). `--store-type keychain` lists only keychain
+  profiles. `--store-type file` lists only `profiles.env` profiles, and outside
+  a project or without a `profiles.env` it fails with the same error as every
+  other command. ([#105](https://github.com/workato-devs/wk/issues/105))
+- `wk auth login` no longer leaves a profile with no token behind when the
+  token can't be stored in the OS keychain. The profile was saved first and
+  kept even when the keychain write failed, so later commands found a profile
+  but no credential. Now a new profile is removed and an overwritten one is
+  restored. The error, previously just `storing credential: exit status 154`,
+  now says that the keychain write failed, whether the profile was left
+  unchanged or not saved, and that `--store-type file` keeps the token in a
+  project file instead.
+- `wk diff` no longer reports every JSON asset as `modified` right after a
+  `wk clone` or `wk pull`. Pull writes JSON normalized (sorted keys,
+  consistent indentation) and records that hash, but diff hashed the remote
+  package's raw JSON, so the two never matched; non-JSON assets were
+  unaffected. Diff now hashes remote files exactly as pull writes them,
+  through one shared function so the two can't drift apart again. Regression
+  from the #13 fix. ([#102](https://github.com/workato-devs/wk/issues/102))
+- **`--json` changed shape for `wk diff`, `wk status`, `wk pull`, `wk clone`,
+  `wk auth list` and `wk plugins list`.** These commands emitted the text
+  table as JSON: each row keyed by its column header, holding display values.
+  For example, `wk diff --json` returned `"STATUS"` and `"LOCAL HASH"` with
+  hashes cut to 8 characters. They now emit their structs, which is what
+  every other command's `--json` already did:
+  - `diff`: `path`, `type`, `local_hash`, `remote_hash` (full SHA-256)
+  - `status`: `file_path`, `status`, and `server_path` once the file has been
+    synced (a new local file has no server path yet, so it's left out)
+  - `pull`/`clone`: `file_path`, `action`, and `error`, which was previously
+    dropped for per-file failures under `--skip-errors`
+  - `auth list`: the profile's fields plus `active` and `shadowed`
+  - `plugins list`: `name`, `version`, `dir`
+
+  An empty result is now `[]` on stdout. Previously `diff`, `status`, `pull`,
+  `clone` and `plugins list` wrote nothing to stdout under `--json` (only a
+  note on stderr), so parsers got an empty string.
+
+  With no profiles, `wk auth list` now prints `No auth profiles found. Add one
+  with: wk auth login` instead of a table with only a header row.
+
+  **Scripts that parse the old header keys need updating.** To stop this
+  recurring, `Formatter.FormatList` now takes the data alongside the table
+  rows, and its JSON mode encodes only the data.
 
 ## [1.0.3] - 2026-08-01
 

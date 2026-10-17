@@ -69,6 +69,9 @@ func resolveAPIClient(cmd *cobra.Command) (api.Client, *auth.Profile, error) {
 			profile.Name, profile.Region, profile.BaseURL, profile.StoreType)
 	}
 
+	if flagRaw {
+		opts = append(opts, api.WithResponseRecorder(rawResponses))
+	}
 	client := api.NewHTTPClient(profile.BaseURL+config.APIPathPrefix, cred.Token, opts...)
 	return client, profile, nil
 }
@@ -241,6 +244,9 @@ func buildVerifyClient(profile *auth.Profile, cred *auth.Credential) api.Client 
 	var opts []api.ClientOption
 	if flagVerbose {
 		opts = append(opts, api.WithVerbose(true))
+	}
+	if flagRaw {
+		opts = append(opts, api.WithResponseRecorder(rawResponses))
 	}
 	return api.NewHTTPClient(profile.BaseURL+config.APIPathPrefix, cred.Token, opts...)
 }

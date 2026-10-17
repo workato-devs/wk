@@ -29,10 +29,17 @@ func TestJSONFormatList(t *testing.T) {
 	f := &JSONFormatter{}
 	var buf bytes.Buffer
 
-	headers := []string{"id", "name"}
-	rows := [][]string{{"1", "alpha"}, {"2", "beta"}}
+	// JSON comes from the data, never from the display rows (#102): rows here
+	// carry a truncated hash under a display header, which must not leak.
+	type item struct {
+		Name string `json:"name"`
+		Hash string `json:"local_hash"`
+	}
+	data := []item{{"alpha", "0123456789abcdef"}, {"beta", "fedcba9876543210"}}
+	headers := []string{"NAME", "LOCAL HASH"}
+	rows := [][]string{{"alpha", "01234567"}, {"beta", "fedcba98"}}
 
-	if err := f.FormatList(&buf, headers, rows); err != nil {
+	if err := f.FormatList(&buf, data, headers, rows); err != nil {
 		t.Fatalf("FormatList: %v", err)
 	}
 
@@ -43,8 +50,32 @@ func TestJSONFormatList(t *testing.T) {
 	if len(result) != 2 {
 		t.Fatalf("len = %d, want 2", len(result))
 	}
-	if result[0]["name"] != "alpha" {
-		t.Errorf("result[0][name] = %q, want %q", result[0]["name"], "alpha")
+	if result[0]["name"] != "alpha" || result[0]["local_hash"] != "0123456789abcdef" {
+		t.Errorf("result[0] = %v, want the struct's keys and full hash", result[0])
+	}
+	if _, leaked := result[0]["LOCAL HASH"]; leaked {
+		t.Errorf("display header leaked into JSON: %v", result[0])
+	}
+}
+
+func TestJSONFormatList_EmptyIsArray(t *testing.T) {
+	// An empty result must be [], not null or no output: callers iterate it.
+	type item struct {
+		Name string `json:"name"`
+	}
+	for name, data := range map[string]any{
+		"nil slice":   []item(nil),
+		"empty slice": []item{},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := (&JSONFormatter{}).FormatList(&buf, data, nil, nil); err != nil {
+				t.Fatalf("FormatList: %v", err)
+			}
+			if got := strings.TrimSpace(buf.String()); got != "[]" {
+				t.Errorf("FormatList(%s) = %q, want []", name, got)
+			}
+		})
 	}
 }
 
@@ -55,7 +86,7 @@ func TestTextFormatList(t *testing.T) {
 	headers := []string{"ID", "NAME"}
 	rows := [][]string{{"1", "alpha"}, {"2", "beta"}}
 
-	if err := f.FormatList(&buf, headers, rows); err != nil {
+	if err := f.FormatList(&buf, nil, headers, rows); err != nil {
 		t.Fatalf("FormatList: %v", err)
 	}
 

@@ -181,7 +181,8 @@ func (e *SyncEngine) fetchRemoteFiles(ctx context.Context, folderID int) (map[st
 	return hashZipContents(data)
 }
 
-// hashZipContents reads a zip archive and returns a map of filename -> SHA256 hash.
+// hashZipContents reads a zip archive and returns a map of filename -> SHA256
+// hash of each file's content as pull would write it.
 func hashZipContents(zipData []byte) (map[string]string, error) {
 	r, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
 	if err != nil {
@@ -205,7 +206,7 @@ func hashZipContents(zipData []byte) (map[string]string, error) {
 		// Normalize the zip path to a clean relative path.
 		name := filepath.ToSlash(f.Name)
 		name = strings.TrimPrefix(name, "/")
-		result[name] = ComputeHash(data)
+		result[name] = ComputeHash(pulledBytes(name, data))
 	}
 	return result, nil
 }

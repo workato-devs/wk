@@ -3,6 +3,7 @@ package output
 import (
 	"encoding/json"
 	"io"
+	"reflect"
 )
 
 // JSONFormatter outputs data as pretty-printed JSON.
@@ -14,18 +15,13 @@ func (f *JSONFormatter) Format(w io.Writer, data any) error {
 	return enc.Encode(data)
 }
 
-func (f *JSONFormatter) FormatList(w io.Writer, headers []string, rows [][]string) error {
-	items := make([]map[string]string, len(rows))
-	for i, row := range rows {
-		item := make(map[string]string)
-		for j, h := range headers {
-			if j < len(row) {
-				item[h] = row[j]
-			}
-		}
-		items[i] = item
+func (f *JSONFormatter) FormatList(w io.Writer, data any, _ []string, _ [][]string) error {
+	// A list is always an array, even when empty: a nil slice would encode
+	// as null and break callers that iterate the result.
+	if v := reflect.ValueOf(data); v.Kind() == reflect.Slice && v.IsNil() {
+		data = []any{}
 	}
-	return f.Format(w, items)
+	return f.Format(w, data)
 }
 
 func (f *JSONFormatter) FormatPage(w io.Writer, data any, _ []string, _ [][]string, meta PageMeta) error {
@@ -40,5 +36,17 @@ func (f *JSONFormatter) FormatPage(w io.Writer, data any, _ []string, _ [][]stri
 		PerPage: meta.PerPage,
 		HasNext: meta.HasNext,
 	}
+	return f.Format(w, envelope)
+}
+
+func (f *JSONFormatter) FormatCursorPage(w io.Writer, data any, _ []string, _ [][]string, meta CursorMeta) error {
+	if v := reflect.ValueOf(data); v.Kind() == reflect.Slice && v.IsNil() {
+		data = []any{}
+	}
+	envelope := struct {
+		Items      any    `json:"items"`
+		NextCursor string `json:"next_cursor"`
+		HasNext    bool   `json:"has_next"`
+	}{Items: data, NextCursor: meta.NextCursor, HasNext: meta.HasNext}
 	return f.Format(w, envelope)
 }
