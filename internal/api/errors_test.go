@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	wkerrors "github.com/workato-devs/wk/internal/errors"
@@ -45,5 +46,24 @@ func TestAPIError_IsThroughWrap(t *testing.T) {
 	wrapped := fmt.Errorf("creating export manifest: %w", err)
 	if !errors.Is(wrapped, wkerrors.ErrAPINotFound) {
 		t.Fatalf("wrapped APIError{404} did not match ErrAPINotFound; errors.Is returned false")
+	}
+}
+
+// A 401's reason decides the advice: a missing permission isn't fixed by
+// logging in again.
+func TestAPIError_Reason(t *testing.T) {
+	tests := map[string]string{
+		"missing_privilege":     "Client roles",
+		"authentication_failed": "wk auth login",
+		"something_new":         "(reason: something_new)",
+	}
+	for reason, want := range tests {
+		err := &APIError{StatusCode: 401, Message: "Unauthorized", Reason: reason}
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: %q, want it to contain %q", reason, err.Error(), want)
+		}
+	}
+	if got := (&APIError{StatusCode: 404, Message: "Not found"}).Error(); got != "API error 404: Not found" {
+		t.Errorf("no reason: %q", got)
 	}
 }

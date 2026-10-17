@@ -16,6 +16,16 @@ type Formatter interface {
 	// text mode it renders headers+rows as a table. This preserves native
 	// field names, types, and omitted fields in JSON output.
 	FormatPage(w io.Writer, data any, headers []string, rows [][]string, meta PageMeta) error
+	// FormatCursorPage is FormatPage for cursor-paginated lists: JSON wraps
+	// data with next_cursor/has_next instead of page/per_page.
+	FormatCursorPage(w io.Writer, data any, headers []string, rows [][]string, meta CursorMeta) error
+}
+
+// CursorMeta is where a cursor-paginated list stands. HasNext comes from the
+// server's cursor, never from the page length (ADR-009 Decision 2).
+type CursorMeta struct {
+	NextCursor string `json:"next_cursor"`
+	HasNext    bool   `json:"has_next"`
 }
 
 // PageMeta carries pagination context so agents can iterate through

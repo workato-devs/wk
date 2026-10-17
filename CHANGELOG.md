@@ -57,9 +57,56 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Workato MCP endpoints such as AIRO MCP (`https://app.<region>.workato.com/airo_mcp`).
   It's sent only to https Workato hosts; any other URL is refused before the
   token is read.
+- `wk agentic genies list` and `wk agentic genies get <id>` list and show
+  Agent Studio genies. `list` takes `--folder-id`, `--project-id`, `--state`,
+  `--page` and `--per-page`, and reports whether more pages exist from the
+  API's `total`. `get` adds the fields only the detail endpoint returns
+  (project, folders, user groups, model label, provider). The API reports
+  `state` differently per endpoint (`started`/`stopped` from list,
+  `active`/`inactive` from get) and `wk` shows each as reported. The `--state`
+  filter takes `active` or `inactive`; the API silently ignores any other
+  value and returns every genie, so `wk` rejects it.
+- Agent Studio read commands, with `--json` output that matches what the API
+  sends:
+  - `wk agentic kb list|get|recipes|data-sources`: knowledge bases. `list`
+    takes `--folder-id`, `--project-id`, `--query`, `--page`, `--per-page`.
+  - `wk agentic clients list`: genie Headless API clients.
+  - `wk agentic guardrails get <genie-id>|pii-entities`: guardrail policies
+    (beta; read only). A `404` explains it can mean guardrails aren't enabled
+    in the workspace.
+  - `wk agentic logs conversations <genie-id>`, `logs conversation <genie-id>
+    <conversation-id>` and `logs events <genie-id> <conversation-id>`: what a
+    genie actually did. These are cursor-paginated: `--cursor`/`--limit`, and
+    `--json` wraps results as `{"items", "next_cursor", "has_next"}`. `events`
+    filters with `--event-type` (repeatable) and `--run-id`.
+
+  Timestamps are RFC 3339 in UTC whichever format the API used (epoch
+  milliseconds for conversations, ISO 8601 elsewhere). A `0` timestamp, such
+  as `last_message_at` on a conversation with no messages, is `null`.
+- Genie write commands: `wk agentic genies create|update|delete|start|stop`,
+  and `assign-`/`remove-` `skills`, `knowledge-bases` and `user-groups`.
+  `create` and `update` print the genie as the API then reports it (`update`
+  sends only the fields you pass). `start` and `stop` report the state the
+  genie ends up in and fail if it isn't the expected one. **Assignments are
+  checked, not trusted:** the API answers `200` even when it ignored an ID
+  (unknown knowledge base and user group IDs are dropped silently), so `wk`
+  reads each ID before and after and reports an outcome per ID: `assigned`,
+  `already_assigned`, `removed`, `not_assigned`, `not_found` or `not_applied`.
+  It exits non-zero if any ID was `not_found` or `not_applied`.
+- A global `--raw` flag prints the Workato API's response body verbatim
+  instead of `wk`'s JSON. `--json` is `wk`'s modeled output and includes only
+  the fields `wk` models (`wk connections list --json` shows 8 fields per
+  connection; `--raw` shows the 17 the API sends). `--raw` implies `--json`. A
+  command that makes several API requests prints one response per line, in
+  order, and one that makes none falls back to `wk`'s JSON with a note on
+  stderr. Binary downloads are never printed.
 
 ### Changed
 
+- API errors now include Workato's `reason` and what to do about it. A `401`
+  with `missing_privilege` says the API client role lacks the permission and
+  that the token is fine; `authentication_failed` points to the profile and
+  `wk auth login`. Both used to read only `API error 401: Unauthorized`.
 - MCP connection errors now include the server's response body and its
   `WWW-Authenticate` challenge. A `401` from a Workato endpoint that wants a
   bearer token says to rerun with `--bearer`, and a rejected token names the
@@ -69,6 +116,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **`wk agentic skills --json` changed shape.** It now matches what the API
+  returns. It gains `type`, `folders`, `genies`, `created_at` and
+  `updated_at`, and loses `recipe_id` and `description`, which the API never
+  sends (`recipe_id` was a copy of `provider_id`). The table's `RECIPE ID`
+  column still shows the recipe, from `provider_id`. `skills list` now decides
+  whether there's another page from the API's `total`, not from whether the
+  page came back full.
+- Agent Studio API errors now show their message: `API error 400: Data
+  sources are only available for Matrix knowledge bases` rather than the raw
+  `{"errors":[…]}` body.
 - `wk mcp servers token-renew --help` no longer says the new URL is printed in
   every case. For `hashed_token` servers (the default for new servers), Workato
   doesn't return the new token: the printed URL has none and won't connect,

@@ -1,6 +1,9 @@
 package api
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 
 // RecipeService defines operations on recipes.
 type RecipeService interface {
@@ -108,9 +111,48 @@ type APIEndpointService interface {
 	Disable(ctx context.Context, id int) error
 }
 
+// GenieService defines operations on Agent Studio genies.
+type GenieService interface {
+	List(ctx context.Context, opts *GenieListOptions) ([]Genie, OffsetPage, error)
+	Get(ctx context.Context, id string) (*GenieDetail, error)
+	Create(ctx context.Context, in GenieInput) (string, error)
+	Update(ctx context.Context, id string, in GenieInput) error
+	Delete(ctx context.Context, id string) error
+	Start(ctx context.Context, id string) error
+	Stop(ctx context.Context, id string) error
+	Assign(ctx context.Context, id string, kind GenieAssignment, ids []string) error
+	Remove(ctx context.Context, id string, kind GenieAssignment, ids []string) error
+}
+
+// KnowledgeBaseService defines read operations on Agent Studio knowledge bases.
+type KnowledgeBaseService interface {
+	List(ctx context.Context, opts *KBListOptions) ([]KnowledgeBase, OffsetPage, error)
+	Get(ctx context.Context, id string) (*KnowledgeBase, error)
+	Recipes(ctx context.Context, id string, opts *PaginationOptions) ([]json.RawMessage, OffsetPage, error)
+	DataSources(ctx context.Context, id string) (json.RawMessage, error)
+}
+
+// GenieClientService defines read operations on genie Headless API clients.
+type GenieClientService interface {
+	List(ctx context.Context, opts *PaginationOptions) ([]GenieClient, OffsetPage, error)
+}
+
+// GuardrailService defines read operations on genie guardrails (beta).
+type GuardrailService interface {
+	Get(ctx context.Context, genieID string) (*Guardrail, error)
+	PIIEntities(ctx context.Context) ([]string, error)
+}
+
+// ConversationService defines read operations on genie conversation logs.
+type ConversationService interface {
+	List(ctx context.Context, genieID string, opts *ConversationListOptions) ([]Conversation, CursorPage, error)
+	Get(ctx context.Context, genieID, conversationID string) (*ConversationDetail, error)
+	Events(ctx context.Context, genieID, conversationID string, opts *EventListOptions) ([]ConversationEvent, CursorPage, error)
+}
+
 // SkillService defines operations on agentic skills.
 type SkillService interface {
-	List(ctx context.Context, opts *PaginationOptions) ([]Skill, error)
+	List(ctx context.Context, opts *PaginationOptions) ([]Skill, OffsetPage, error)
 	Get(ctx context.Context, id string) (*Skill, error)
 	Create(ctx context.Context, recipeID int) (*Skill, error)
 }
@@ -159,6 +201,11 @@ type Client interface {
 	APIEndpoints() APIEndpointService
 	APIClients() APIClientService
 	Skills() SkillService
+	Genies() GenieService
+	KnowledgeBases() KnowledgeBaseService
+	GenieClients() GenieClientService
+	Guardrails() GuardrailService
+	Conversations() ConversationService
 	MCPServers() MCPServerService
 	Workspace() WorkspaceService
 	Connectors() ConnectorService

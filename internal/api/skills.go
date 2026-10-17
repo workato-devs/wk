@@ -13,13 +13,14 @@ type skillService struct {
 
 type skillListResponse struct {
 	Data []Skill `json:"data"`
+	OffsetPage
 }
 
 type skillDataResponse struct {
 	Data Skill `json:"data"`
 }
 
-func (s *skillService) List(ctx context.Context, opts *PaginationOptions) ([]Skill, error) {
+func (s *skillService) List(ctx context.Context, opts *PaginationOptions) ([]Skill, OffsetPage, error) {
 	params := url.Values{}
 	if opts != nil {
 		if opts.Page > 0 {
@@ -35,12 +36,9 @@ func (s *skillService) List(ctx context.Context, opts *PaginationOptions) ([]Ski
 	}
 	var result skillListResponse
 	if err := s.client.do(ctx, "GET", path, nil, &result); err != nil {
-		return nil, err
+		return nil, OffsetPage{}, err
 	}
-	for i := range result.Data {
-		backfillSkillRecipeID(&result.Data[i])
-	}
-	return result.Data, nil
+	return result.Data, result.OffsetPage, nil
 }
 
 func (s *skillService) Get(ctx context.Context, id string) (*Skill, error) {
@@ -48,7 +46,6 @@ func (s *skillService) Get(ctx context.Context, id string) (*Skill, error) {
 	if err := s.client.do(ctx, "GET", fmt.Sprintf("/agentic/skills/%s", id), nil, &result); err != nil {
 		return nil, err
 	}
-	backfillSkillRecipeID(&result.Data)
 	return &result.Data, nil
 }
 
@@ -60,12 +57,5 @@ func (s *skillService) Create(ctx context.Context, recipeID int) (*Skill, error)
 	if err := s.client.do(ctx, "POST", "/agentic/skills", body, &result); err != nil {
 		return nil, err
 	}
-	backfillSkillRecipeID(&result.Data)
 	return &result.Data, nil
-}
-
-func backfillSkillRecipeID(s *Skill) {
-	if s.RecipeID == 0 && s.ProviderID != 0 {
-		s.RecipeID = s.ProviderID
-	}
 }

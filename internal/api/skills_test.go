@@ -8,113 +8,89 @@ import (
 	"testing"
 )
 
+// skillJSON is a skill as list, get and create return it (captured
+// 2026-10-16, trimmed). There is no recipe_id or description: the recipe is
+// provider_id.
+const skillJSON = `{"id":"skl-001","type":"skill_recipe","name":"my-skill","provider_id":100,
+"provider_type":"Recipe","folder_id":10,"project_id":5,"folders":[{"id":10,"name":"Skills"}],
+"running":true,"genies":[{"genie_id":"gin-1"}],"genies_count":1,
+"trigger_description":"When the user asks…","applications":["jira","py_eval"],
+"created_at":"2025-07-08T08:09:09.998-07:00","updated_at":"2025-07-08T08:55:15.439-07:00"}`
+
+func checkSkill(t *testing.T, s Skill) {
+	t.Helper()
+	if s.ID != "skl-001" || s.Type != "skill_recipe" || s.ProviderID != 100 || s.FolderID != 10 || s.ProjectID != 5 || !s.Running {
+		t.Errorf("skill = %+v", s)
+	}
+	if s.RecipeID() != 100 {
+		t.Errorf("RecipeID() = %d, want provider_id when provider_type is Recipe", s.RecipeID())
+	}
+	if len(s.Genies) != 1 || s.Genies[0].GenieID != "gin-1" || len(s.Applications) != 2 || len(s.Folders) != 1 {
+		t.Errorf("nested fields = %+v / %+v / %+v", s.Genies, s.Applications, s.Folders)
+	}
+	if s.CreatedAt.IsZero() {
+		t.Error("created_at not decoded")
+	}
+}
+
 func TestSkillService_List(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" {
-			t.Errorf("method = %s, want GET", r.Method)
-		}
-		if r.URL.Path != "/agentic/skills" {
-			t.Errorf("path = %s, want /agentic/skills", r.URL.Path)
+		if r.Method != "GET" || r.URL.Path != "/agentic/skills" {
+			t.Errorf("%s %s, want GET /agentic/skills", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"data":[{"id":"skl-001","name":"my-skill","description":"test skill","provider_id":100,"provider_type":"Recipe","folder_id":10,"project_id":5,"running":true,"genies_count":2}]}`))
+		w.Write([]byte(`{"data":[` + skillJSON + `],"total":179,"page":1,"per_page":50}`))
 	}))
 	defer srv.Close()
 
-	client := NewHTTPClient(srv.URL, "test-token")
-	skills, err := client.Skills().List(context.Background(), nil)
+	skills, pg, err := NewHTTPClient(srv.URL, "test-token").Skills().List(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(skills) != 1 || skills[0].Name != "my-skill" {
-		t.Errorf("got %+v, want 1 skill named my-skill", skills)
+	if len(skills) != 1 {
+		t.Fatalf("got %d skills, want 1", len(skills))
 	}
-	s := skills[0]
-	if s.ID != "skl-001" {
-		t.Errorf("ID = %q, want skl-001", s.ID)
-	}
-	if s.Description != "test skill" {
-		t.Errorf("Description = %q, want %q", s.Description, "test skill")
-	}
-	if s.ProviderID != 100 {
-		t.Errorf("ProviderID = %d, want 100", s.ProviderID)
-	}
-	if s.RecipeID != 100 {
-		t.Errorf("RecipeID = %d, want 100 (backfilled from ProviderID)", s.RecipeID)
-	}
-	if s.FolderID != 10 {
-		t.Errorf("FolderID = %d, want 10", s.FolderID)
-	}
-	if s.ProjectID != 5 {
-		t.Errorf("ProjectID = %d, want 5", s.ProjectID)
-	}
-	if !s.Running {
-		t.Errorf("Running = false, want true")
-	}
-	if s.GeniesCount != 2 {
-		t.Errorf("GeniesCount = %d, want 2", s.GeniesCount)
+	checkSkill(t, skills[0])
+	if pg.Total != 179 || !pg.HasNext() {
+		t.Errorf("page = %+v, want HasNext from total", pg)
 	}
 }
 
 func TestSkillService_Get(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" {
-			t.Errorf("method = %s, want GET", r.Method)
-		}
-		if r.URL.Path != "/agentic/skills/skl-042" {
-			t.Errorf("path = %s, want /agentic/skills/skl-042", r.URL.Path)
+		if r.Method != "GET" || r.URL.Path != "/agentic/skills/skl-001" {
+			t.Errorf("%s %s, want GET /agentic/skills/skl-001", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"data":{"id":"skl-042","name":"lookup-skill","provider_id":200,"folder_id":20,"project_id":8,"running":false,"genies_count":0}}`))
+		w.Write([]byte(`{"data":` + skillJSON + `}`))
 	}))
 	defer srv.Close()
 
-	client := NewHTTPClient(srv.URL, "test-token")
-	s, err := client.Skills().Get(context.Background(), "skl-042")
+	s, err := NewHTTPClient(srv.URL, "test-token").Skills().Get(context.Background(), "skl-001")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if s.ID != "skl-042" {
-		t.Errorf("ID = %q, want skl-042", s.ID)
-	}
-	if s.Name != "lookup-skill" {
-		t.Errorf("Name = %q, want %q", s.Name, "lookup-skill")
-	}
-	if s.RecipeID != 200 {
-		t.Errorf("RecipeID = %d, want 200 (backfilled from ProviderID)", s.RecipeID)
-	}
+	checkSkill(t, *s)
 }
 
 func TestSkillService_Create(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			t.Errorf("method = %s, want POST", r.Method)
-		}
-		if r.URL.Path != "/agentic/skills" {
-			t.Errorf("path = %s, want /agentic/skills", r.URL.Path)
+		if r.Method != "POST" || r.URL.Path != "/agentic/skills" {
+			t.Errorf("%s %s, want POST /agentic/skills", r.Method, r.URL.Path)
 		}
 		var body map[string]any
 		json.NewDecoder(r.Body).Decode(&body)
-		if body["recipe_id"] != float64(300) {
-			t.Errorf("recipe_id = %v, want 300", body["recipe_id"])
+		if body["recipe_id"] != float64(100) {
+			t.Errorf("recipe_id = %v, want 100", body["recipe_id"])
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"data":{"id":"skl-007","name":"new-skill","provider_id":300,"provider_type":"Recipe","folder_id":30,"project_id":12,"running":true,"genies_count":0}}`))
+		w.Write([]byte(`{"data":` + skillJSON + `}`))
 	}))
 	defer srv.Close()
 
-	client := NewHTTPClient(srv.URL, "test-token")
-	s, err := client.Skills().Create(context.Background(), 300)
+	s, err := NewHTTPClient(srv.URL, "test-token").Skills().Create(context.Background(), 100)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if s.ID != "skl-007" {
-		t.Errorf("ID = %q, want skl-007", s.ID)
-	}
-	if s.RecipeID != 300 {
-		t.Errorf("RecipeID = %d, want 300 (backfilled from ProviderID)", s.RecipeID)
-	}
-	if s.ProviderType != "Recipe" {
-		t.Errorf("ProviderType = %q, want Recipe", s.ProviderType)
-	}
+	checkSkill(t, *s)
 }

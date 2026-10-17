@@ -38,3 +38,15 @@ func (f *JSONFormatter) FormatPage(w io.Writer, data any, _ []string, _ [][]stri
 	}
 	return f.Format(w, envelope)
 }
+
+func (f *JSONFormatter) FormatCursorPage(w io.Writer, data any, _ []string, _ [][]string, meta CursorMeta) error {
+	if v := reflect.ValueOf(data); v.Kind() == reflect.Slice && v.IsNil() {
+		data = []any{}
+	}
+	envelope := struct {
+		Items      any    `json:"items"`
+		NextCursor string `json:"next_cursor"`
+		HasNext    bool   `json:"has_next"`
+	}{Items: data, NextCursor: meta.NextCursor, HasNext: meta.HasNext}
+	return f.Format(w, envelope)
+}

@@ -123,3 +123,41 @@ func TestPackageImport_RestartRecipesParam(t *testing.T) {
 		})
 	}
 }
+
+type recorder struct{ bodies [][]byte }
+
+func (r *recorder) RecordResponse(b []byte) { r.bodies = append(r.bodies, b) }
+
+// --raw records each successful JSON body verbatim, and never a binary one.
+func TestHTTPClient_ResponseRecorder(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/json":
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.Write([]byte(`{"id": 1, "unmodeled_field": "kept"}`))
+		case "/zip":
+			w.Header().Set("Content-Type", "application/zip")
+			w.Write([]byte("PK\x03\x04"))
+		case "/err":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"message":"nope"}`))
+		}
+	}))
+	defer srv.Close()
+	rec := &recorder{}
+	c := NewHTTPClient(srv.URL, "tok", WithResponseRecorder(rec))
+
+	var v struct{ ID int }
+	if err := c.do(context.Background(), "GET", "/json", nil, &v); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.doRaw(context.Background(), "GET", "/zip", nil); err != nil {
+		t.Fatal(err)
+	}
+	_ = c.do(context.Background(), "GET", "/err", nil, nil)
+
+	if len(rec.bodies) != 1 || string(rec.bodies[0]) != `{"id": 1, "unmodeled_field": "kept"}` {
+		t.Errorf("recorded = %q, want only the JSON success body, verbatim", rec.bodies)
+	}
+}

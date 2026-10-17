@@ -17,6 +17,11 @@ func newAgenticCmd() *cobra.Command {
 		Short: "Manage Agent Studio resources",
 	}
 	cmd.AddCommand(newSkillsCmd())
+	cmd.AddCommand(newGeniesCmd())
+	cmd.AddCommand(newKBCmd())
+	cmd.AddCommand(newGenieClientsCmd())
+	cmd.AddCommand(newGuardrailsCmd())
+	cmd.AddCommand(newLogsCmd())
 	return cmd
 }
 
@@ -51,7 +56,7 @@ func newSkillsListCmd() *cobra.Command {
 			}
 
 			opts := &api.PaginationOptions{Page: page, PerPage: perPage}
-			skills, err := client.Skills().List(cmd.Context(), opts)
+			skills, pg, err := client.Skills().List(cmd.Context(), opts)
 			if err != nil {
 				return err
 			}
@@ -66,13 +71,20 @@ func newSkillsListCmd() *cobra.Command {
 				rows = append(rows, []string{
 					s.ID,
 					s.Name,
-					strconv.Itoa(s.RecipeID),
+					strconv.Itoa(s.RecipeID()),
 					strconv.Itoa(s.FolderID),
 					strconv.Itoa(s.ProjectID),
 					running,
 				})
 			}
-			meta := output.PageMeta{Page: page, PerPage: perPage, HasNext: perPage > 0 && len(skills) == perPage}
+			// HasNext from the API's total, not the page length.
+			meta := output.PageMeta{Page: pg.Page, PerPage: pg.PerPage, HasNext: pg.HasNext()}
+			if !flagJSON && pg.HasNext() && !rctx.Quiet {
+				defer fmt.Fprintf(os.Stderr, "Showing %d of %d; next page: --page %d\n", len(skills), pg.Total, pg.Page+1)
+			}
+			if skills == nil {
+				skills = []api.Skill{}
+			}
 			return rctx.Formatter.FormatPage(os.Stdout, skills, headers, rows, meta)
 		},
 	}
@@ -115,7 +127,7 @@ func newSkillsGetCmd() *cobra.Command {
 			rows := [][]string{{
 				skill.ID,
 				skill.Name,
-				strconv.Itoa(skill.RecipeID),
+				strconv.Itoa(skill.RecipeID()),
 				strconv.Itoa(skill.FolderID),
 				strconv.Itoa(skill.ProjectID),
 				running,

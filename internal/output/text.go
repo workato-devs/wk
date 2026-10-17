@@ -27,3 +27,7 @@ func (f *TextFormatter) FormatList(w io.Writer, _ any, headers []string, rows []
 func (f *TextFormatter) FormatPage(w io.Writer, _ any, headers []string, rows [][]string, _ PageMeta) error {
 	return f.FormatList(w, nil, headers, rows)
 }
+
+func (f *TextFormatter) FormatCursorPage(w io.Writer, _ any, headers []string, rows [][]string, _ CursorMeta) error {
+	return f.FormatList(w, nil, headers, rows)
+}

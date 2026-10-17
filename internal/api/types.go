@@ -267,22 +267,249 @@ type APIEndpoint struct {
 	Description     *string `json:"description,omitempty"`
 }
 
-// Skill represents a Workato agentic skill. The API returns string IDs
-// (e.g. "skl-Aa6zhmTh-4ac8TH-AB") and uses "provider_id" for the recipe
-// association; RecipeID is backfilled from ProviderID for display convenience.
+// Genie is an Agent Studio genie as returned by GET /agentic/genies (list).
+// It is a separate type from GenieDetail because the two endpoints return
+// different shapes, and State uses a different vocabulary in each for the
+// same genie: list says "stopped"/"started", get says "inactive"/"active"
+// (ADR-009 Decision 3). State is kept as the endpoint reported it.
+type Genie struct {
+	ID                     string            `json:"id"`
+	Name                   string            `json:"name"`
+	Description            string            `json:"description"`
+	State                  string            `json:"state"` // list vocabulary: "stopped", "started"
+	FolderID               int               `json:"folder_id"`
+	Instructions           string            `json:"instructions"`
+	AIProvider             string            `json:"ai_provider"`
+	AIModel                string            `json:"ai_model"`
+	ChatInterface          *string           `json:"chat_interface"`
+	ChannelMode            string            `json:"channel_mode"`
+	ChannelScope           string            `json:"channel_scope"`
+	ChannelWhitelist       []string          `json:"channel_whitelist"`
+	ResponseMode           string            `json:"response_mode"`
+	WebSearchEnabled       bool              `json:"web_search_enabled"`
+	WebSearchAvailable     bool              `json:"web_search_available"`
+	CodeInterpreterEnabled bool              `json:"code_interpreter_enabled"`
+	SkillsCount            int               `json:"skills_count"`
+	KnowledgeBasesCount    int               `json:"knowledge_bases_count"`
+	UserGroupsCount        int               `json:"user_groups_count"`
+	ActiveRecipesCount     int               `json:"active_recipes_count"`
+	InactiveSkillsCount    int               `json:"inactive_skills_count"`
+	Triggers               []json.RawMessage `json:"triggers"` // element shape not yet observed; kept as sent
+	LogoURL                string            `json:"logo_url"`
+	CreatedAt              Timestamp         `json:"created_at"`
+	UpdatedAt              Timestamp         `json:"updated_at"`
+}
+
+// GenieDetail is a genie as returned by GET /agentic/genies/:id: the list
+// fields plus detail-only ones. Its State uses the get vocabulary
+// ("inactive", "active"), not the list one.
+type GenieDetail struct {
+	Genie
+	ProjectID        int              `json:"project_id"`
+	AIModelLabel     string           `json:"ai_model_label"`
+	AIProviderID     string           `json:"ai_provider_id"`
+	AIProviderType   string           `json:"ai_provider_type"`
+	ConnectionID     json.RawMessage  `json:"connection_id"` // only null observed; kept as sent
+	CustomOAuthKeyID *int             `json:"custom_oauth_key_id"`
+	Folders          []AgenticFolder  `json:"folders"`
+	UserGroups       []GenieUserGroup `json:"user_groups"`
+	// Guardrails is present only when the workspace's guardrails feature is
+	// on (beta).
+	Guardrails *Guardrail `json:"guardrails,omitempty"`
+}
+
+// AgenticFolder is a folder reference embedded in Agent Studio responses.
+type AgenticFolder struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+// GenieUserGroup is a user group a genie is assigned to.
+type GenieUserGroup struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// OffsetPage is the page/per_page/total envelope of an offset-paginated
+// Agent Studio list. HasNext comes from total, never from the page length.
+type OffsetPage struct {
+	Page    int `json:"page"`
+	PerPage int `json:"per_page"`
+	Total   int `json:"total"`
+}
+
+// HasNext reports whether pages after this one exist.
+func (p OffsetPage) HasNext() bool {
+	return p.Page > 0 && p.PerPage > 0 && p.Page*p.PerPage < p.Total
+}
+
+// Skill is an Agent Studio skill, as returned by list, get and create (all
+// three return the same shape). The skill's recipe is ProviderID when
+// ProviderType is "Recipe"; the API has no recipe_id field (ADR-009
+// Decision 3).
 type Skill struct {
-	ID                 string `json:"id"`
-	Name               string `json:"name"`
-	Description        string `json:"description,omitempty"`
-	RecipeID           int    `json:"recipe_id,omitempty"`
-	ProviderID         int    `json:"provider_id"`
-	ProviderType       string `json:"provider_type,omitempty"`
-	FolderID           int    `json:"folder_id"`
-	ProjectID          int    `json:"project_id"`
-	Running            bool   `json:"running"`
-	GeniesCount        int    `json:"genies_count"`
-	TriggerDescription string `json:"trigger_description,omitempty"`
-	Applications       []any  `json:"applications,omitempty"`
+	ID                 string          `json:"id"`
+	Type               string          `json:"type"` // e.g. "skill_recipe"
+	Name               string          `json:"name"`
+	ProviderID         int             `json:"provider_id"`
+	ProviderType       string          `json:"provider_type"`
+	FolderID           int             `json:"folder_id"`
+	ProjectID          int             `json:"project_id"`
+	Folders            []AgenticFolder `json:"folders"`
+	Running            bool            `json:"running"`
+	Genies             []GenieRef      `json:"genies"`
+	GeniesCount        int             `json:"genies_count"`
+	TriggerDescription string          `json:"trigger_description"`
+	Applications       []string        `json:"applications"`
+	CreatedAt          Timestamp       `json:"created_at"`
+	UpdatedAt          Timestamp       `json:"updated_at"`
+}
+
+// RecipeID returns the skill's recipe ID, or 0 if its provider isn't a recipe.
+func (s Skill) RecipeID() int {
+	if s.ProviderType == "Recipe" {
+		return s.ProviderID
+	}
+	return 0
+}
+
+// GenieRef is a reference to a genie embedded in skill and knowledge base
+// responses.
+type GenieRef struct {
+	GenieID string `json:"genie_id"`
+}
+
+// KnowledgeBase is an Agent Studio knowledge base (list and get return the
+// same shape).
+type KnowledgeBase struct {
+	ID                 string          `json:"id"`
+	Name               string          `json:"name"`
+	Description        string          `json:"description"`
+	SourceType         string          `json:"source_type"` // "recipe", or "matrix"
+	FolderID           int             `json:"folder_id"`
+	ProjectID          int             `json:"project_id"`
+	Folders            []AgenticFolder `json:"folders"`
+	ExternalID         string          `json:"external_id"`
+	ActiveRecipesCount int             `json:"active_recipes_count"`
+	StorageSize        *int64          `json:"storage_size,omitempty"` // get only; list omits it
+	Genies             []GenieRef      `json:"genies"`
+	GeniesCount        int             `json:"genies_count"`
+	Applications       []string        `json:"applications"`
+	CreatedAt          Timestamp       `json:"created_at"`
+	UpdatedAt          Timestamp       `json:"updated_at"`
+}
+
+// GenieClient is a runtime credential for the genie Headless API. A genie has
+// at most one client.
+type GenieClient struct {
+	ClientID    string    `json:"client_id"`
+	ClientName  string    `json:"client_name"`
+	Type        string    `json:"type"` // "api_key" or "oauth"
+	Status      string    `json:"status"`
+	BaseHost    string    `json:"base_host"`
+	GenieIDs    []string  `json:"genie_ids"`
+	IPAllowList []string  `json:"ip_allow_list"`
+	ActivatedAt Timestamp `json:"activated_at"`
+}
+
+// Guardrail is a genie's content-safety configuration. ID is null when no
+// guardrail is attached. Guardrails are beta.
+type Guardrail struct {
+	ID       *string           `json:"id"`
+	Policies []GuardrailPolicy `json:"policies"`
+}
+
+// GuardrailPolicy is one policy. Configuration's shape depends on PolicyType
+// and is kept as sent, so a policy type wk doesn't know yet still reads
+// (ADR-009 Decision 3).
+type GuardrailPolicy struct {
+	ID            string          `json:"id"`
+	PolicyType    string          `json:"policy_type"`
+	Configuration json.RawMessage `json:"configuration"`
+}
+
+// Conversation is a genie conversation as returned by the conversations list.
+type Conversation struct {
+	ID                 string           `json:"id"`
+	Topic              string           `json:"topic"`
+	GenieHandle        string           `json:"genie_handle"`
+	GenieID            string           `json:"genie_id"` // numeric, as a string
+	GenieName          string           `json:"genie_name"`
+	GenieVersion       int              `json:"genie_version"`
+	AppType            string           `json:"app_type"`
+	ChatType           string           `json:"chat_type"`
+	ConversationOrigin string           `json:"conversation_origin"`
+	StartedVia         string           `json:"started_via"`
+	StartedBy          ConversationUser `json:"started_by"`
+	TestConversation   bool             `json:"test_conversation"`
+	EnvironmentID      int64            `json:"environment_id"`
+	EnvironmentType    string           `json:"environment_type"`
+	WorkspaceID        int64            `json:"workspace_id"`
+	CreatedAt          Timestamp        `json:"created_at"` // epoch millis on the wire
+}
+
+// ConversationDetail is one conversation from the get endpoint: the list
+// fields plus its last message time and per-conversation totals.
+type ConversationDetail struct {
+	Conversation
+	LastMessageAt Timestamp          `json:"last_message_at"` // 0 on the wire when there are none
+	Totals        ConversationTotals `json:"totals"`
+}
+
+// ConversationUser is who started a conversation.
+type ConversationUser struct {
+	UserID string `json:"user_id"`
+	Name   string `json:"name"`
+	Email  string `json:"email"`
+}
+
+// ConversationTotals counts what happened in a conversation.
+type ConversationTotals struct {
+	Errors struct {
+		Count int `json:"count"`
+	} `json:"errors"`
+	SkillCalls struct {
+		Count int `json:"count"`
+	} `json:"skill_calls"`
+	KBCalls struct {
+		Count int `json:"count"`
+	} `json:"kb_calls"`
+	Feedback struct {
+		Positive FeedbackCount `json:"positive"`
+		Negative FeedbackCount `json:"negative"`
+	} `json:"feedback"`
+}
+
+// FeedbackCount is a feedback tally.
+type FeedbackCount struct {
+	Count    int `json:"count"`
+	Comments int `json:"comments"`
+}
+
+// ConversationEvent is one event in a conversation. Every event has the
+// common fields; the rest depend on EventType and are empty when absent.
+// Data is a string: JSON-encoded for most event types, plain text for
+// topic_assigned. It's kept as sent. Event types seen (2026-10):
+// genie_run_start, ai_job_started, user_message, guardrail_evaluated,
+// agent_message, ai_job_completed, topic_assigned, genie_run_finish.
+type ConversationEvent struct {
+	EventID                string    `json:"event_id"`
+	EventType              string    `json:"event_type"`
+	DateTime               Timestamp `json:"date_time"`
+	ConversationID         string    `json:"conversation_id"`
+	GenieHandle            string    `json:"genie_handle"`
+	GenieID                string    `json:"genie_id"`
+	GenieRunID             string    `json:"genie_run_id"`
+	IdentityUserID         string    `json:"identity_user_id"`
+	EnvironmentID          int64     `json:"environment_id"`
+	WorkspaceID            int64     `json:"workspace_id"`
+	AppType                string    `json:"app_type,omitempty"`
+	ChatType               string    `json:"chat_type,omitempty"`
+	RequestID              string    `json:"request_id,omitempty"`
+	Data                   *string   `json:"data,omitempty"`
+	GenieRunTrigger        string    `json:"genie_run_trigger,omitempty"`
+	FirstRunInConversation *bool     `json:"first_run_in_conversation,omitempty"`
+	TestRun                *bool     `json:"test_run,omitempty"`
 }
 
 // APIClient represents a Workato API Platform client (v2 API).
