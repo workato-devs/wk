@@ -31,7 +31,7 @@ func (b *ResponseBuffer) Bodies() [][]byte {
 }
 
 // RawFormatter prints what the Workato API returned instead of wk's own
-// rendering (ADR-001 Decision 3, ADR-009 Decision 7): --json is wk's modeled
+// rendering (ADR-001 Decision 3, ADR-009 Decision 6): --json is wk's modeled
 // contract, --raw is the API's. One response is written byte for byte. Several
 // (a command that made more than one request) are written one per line, in
 // request order, with only insignificant whitespace removed. A command that

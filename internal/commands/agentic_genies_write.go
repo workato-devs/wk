@@ -244,7 +244,7 @@ func printGenie(cmd *cobra.Command, rctx *RunContext, client api.Client, id, not
 	return rctx.Formatter.FormatList(os.Stdout, g, headers, [][]string{{g.ID, g.Name, g.State, g.AIModelLabel, fmt.Sprint(g.FolderID), fmt.Sprint(g.ProjectID)}})
 }
 
-// ---- assignments (ADR-009 Decision 6) ----
+// ---- assignments (ADR-009 Decision 5) ----
 
 // Assignment outcomes, per requested ID.
 const (

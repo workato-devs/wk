@@ -125,6 +125,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     `--force` deletes it, and `detach` keeps it.
 - `wk agentic genies delete --help` now says that deleting a genie also
   deletes the clients attached to it.
+- `wk agentic skills create` now says, in its help and after creating, that a
+  skill can't be deleted through the API and only the Workato UI can remove it.
 - A global `--raw` flag prints the Workato API's response body verbatim
   instead of `wk`'s JSON. `--json` is `wk`'s modeled output and includes only
   the fields `wk` models (`wk connections list --json` shows 8 fields per

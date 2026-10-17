@@ -8,7 +8,7 @@ import (
 )
 
 // The API's 200 on assign/remove doesn't mean every ID was applied, so the
-// outcome comes from membership before and after (ADR-009 Decision 6).
+// outcome comes from membership before and after (ADR-009 Decision 5).
 func TestReconcileAssignment(t *testing.T) {
 	m := func(found, attached bool) membership { return membership{found: found, attached: attached} }
 	tests := []struct {

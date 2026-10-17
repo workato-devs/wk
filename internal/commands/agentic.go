@@ -143,6 +143,11 @@ func newSkillsCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create an agentic skill from a recipe",
+		Long: `Create a skill from a recipe that has a workato_genie start_workflow trigger.
+
+A skill can't be deleted through the API, and deleting its recipe doesn't
+remove it: only the Workato UI can delete a skill. Create one only where you
+mean to keep it.`,
 		Example: `  wk agentic skills create --recipe-id 12345 --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rctx, err := BuildRunContext(cmd)
@@ -164,6 +169,7 @@ func newSkillsCreateCmd() *cobra.Command {
 			}
 
 			fmt.Fprintf(os.Stderr, "Created skill %q (ID: %s)\n", skill.Name, skill.ID)
+			fmt.Fprintln(os.Stderr, "Skills can't be deleted through the API; only the Workato UI can remove this one.")
 			return nil
 		},
 	}

@@ -10,7 +10,7 @@ import (
 
 // Timestamp is a point in time decoded from whichever format an API resource
 // uses, and encoded in one format, so --json callers never handle more than
-// one (ADR-009 Decision 7). --raw still shows the wire value.
+// one (ADR-009 Decision 6). --raw still shows the wire value.
 //
 // Observed in the Agent Studio API (2026-10): epoch milliseconds as a number
 // (conversations), ISO-8601 in UTC with microseconds (conversation events),

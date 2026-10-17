@@ -138,7 +138,7 @@ func (s *genieService) Stop(ctx context.Context, id string) error {
 // Assign attaches ids to a genie. The API's 200 doesn't mean every ID was
 // applied: unknown knowledge base and user group IDs are silently ignored
 // (unknown skill IDs get a 404), so callers must reconcile (ADR-009
-// Decision 6).
+// Decision 5).
 func (s *genieService) Assign(ctx context.Context, id string, kind GenieAssignment, ids []string) error {
 	path := "/agentic/genies/" + url.PathEscape(id) + "/assign_" + string(kind)
 	return s.client.do(ctx, "POST", path, map[string][]string{kind.idsField(): ids}, nil)
