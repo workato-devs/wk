@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/workato-devs/wk/internal/api"
 	"github.com/workato-devs/wk/internal/auth"
@@ -17,6 +18,7 @@ import (
 	wkerrors "github.com/workato-devs/wk/internal/errors"
 	"github.com/workato-devs/wk/internal/output"
 	"github.com/workato-devs/wk/internal/plugin"
+	"github.com/workato-devs/wk/internal/telemetry"
 )
 
 // ExitCodeError is returned when a plugin reports a non-zero exit code.
@@ -76,6 +78,10 @@ Every command supports --json for machine-readable output.`,
 				flagJSON = true
 				rawResponses = &output.ResponseBuffer{}
 			}
+			// Start a telemetry span for this command invocation.
+			// The provider is a no-op when telemetry is disabled; this is always safe.
+			newCtx := telemetry.GlobalProvider().StartCommand(cmd.Context(), cmd.CommandPath())
+			cmd.SetContext(newCtx)
 			return nil
 		},
 	}
@@ -153,15 +159,46 @@ func Execute(ctx context.Context) int {
 	root := NewRootCmd()
 	registerAllCommands(root)
 
-	if err := root.ExecuteContext(ctx); err != nil {
+	// Initialise telemetry. Init is a no-op when disabled; Shutdown flushes
+	// pending spans. Both are safe to call unconditionally.
+	telProvider := telemetry.Init(ctx)
+
+	err := root.ExecuteContext(ctx)
+
+	exitCode := 0
+	if err != nil {
+		exitCode = classifyError(err)
+	}
+
+	// Record outcome on the active span, then flush before the process exits.
+	telProvider.EndCommand(collectSetFlags(root), exitCode)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), telemetry.ShutdownTimeout)
+	defer cancel()
+	telProvider.Shutdown(shutdownCtx)
+
+	if err != nil {
 		var exitErr ExitCodeError
 		if errors.As(err, &exitErr) {
 			return exitErr.Code
 		}
 		os.Stderr.WriteString("Error: " + err.Error() + "\n")
-		return classifyError(err)
+		return exitCode
 	}
 	return 0
+}
+
+// collectSetFlags returns the names of all persistent flags that were
+// explicitly set on the executed command. Values are intentionally omitted —
+// they may contain paths, project names, or other sensitive data.
+func collectSetFlags(root *cobra.Command) []string {
+	var flags []string
+	root.Flags().Visit(func(f *pflag.Flag) {
+		flags = append(flags, f.Name)
+	})
+	root.PersistentFlags().Visit(func(f *pflag.Flag) {
+		flags = append(flags, f.Name)
+	})
+	return flags
 }
 
 // classifyError maps an error to a semantic exit code so agents and
@@ -230,6 +267,7 @@ func registerAllCommands(root *cobra.Command) {
 	root.AddCommand(newWorkspaceCmd())
 	root.AddCommand(newConnectorsCmd())
 	root.AddCommand(newSyncCmd())
+	root.AddCommand(newTelemetryCmd())
 	registerPluginCommands(root)
 }
 
