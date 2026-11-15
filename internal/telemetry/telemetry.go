@@ -11,8 +11,10 @@ package telemetry
 
 import (
 	"context"
+	"net/url"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -86,13 +88,24 @@ func Init(ctx context.Context) *Provider {
 		endpoint = e
 	}
 
+	// otlptracehttp.WithEndpoint expects host:port only (no scheme or path).
+	// Parse the URL to extract the host and determine whether TLS is needed.
+	insecure := false
+	endpointHost := endpoint
+	if u, err := url.Parse(endpoint); err == nil && u.Host != "" {
+		endpointHost = u.Host
+		insecure = u.Scheme == "http"
+	} else if strings.HasPrefix(endpoint, "http://") {
+		endpointHost = strings.TrimPrefix(endpoint, "http://")
+		insecure = true
+	}
+
 	opts := []otlptracehttp.Option{
-		otlptracehttp.WithEndpoint(endpoint),
+		otlptracehttp.WithEndpoint(endpointHost),
 		otlptracehttp.WithHeaders(map[string]string{SourceHeader: SourceValue}),
 		otlptracehttp.WithTimeout(2 * time.Second),
 	}
-	// Allow plain HTTP for local test server (http:// prefix).
-	if len(endpoint) >= 7 && endpoint[:7] == "http://" {
+	if insecure {
 		opts = append(opts, otlptracehttp.WithInsecure())
 	}
 
