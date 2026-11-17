@@ -4,6 +4,21 @@ All notable changes to `wk` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- `wk recipes import` reports the API's reason when it refuses a create
+  (for example `folder_id: can't be assigned to the root folder`). It used to
+  ignore the refusal, request `GET /recipes/0`, and fail with a misleading
+  `API error 404: Not found`. A success response with no recipe id now fails
+  with a clear error too. (#109)
+- `wk recipes jobs --limit N` returns at most N jobs. The Jobs API has no
+  page-size parameter, so the limit used to be sent as `per_page` and ignored;
+  it is now applied after the fetch, which still returns up to 1,000 jobs. (#109)
+- `wk recipes jobs --json` keeps each job's `job_correlation_id`, which the
+  list API returns but `wk` dropped. `wk recipes jobs get` still shows it. (#109)
+
 ## [1.1.0] - 2026-10-17
 
 ### Added

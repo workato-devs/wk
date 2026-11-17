@@ -852,3 +852,109 @@ func TestRecipeService_Start_ExtraStepTupleElements_StillParsed(t *testing.T) {
 		t.Fatalf("details lost on 3-element step tuple: %+v", actErr.CodeErrors)
 	}
 }
+
+// POST /recipes answers a refused create with HTTP 200 and success:false.
+// Import must report the API's reason, not follow up with GET /recipes/0
+// and surface that request's 404 (#109).
+func TestRecipeService_Import_SurfacesRefusal(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == "POST" && r.URL.Path == "/recipes" {
+			w.Write([]byte(`{"success":false,"errors":{"folder_id":["can't be assigned to the root folder"]}}`))
+			return
+		}
+		t.Errorf("unexpected %s %s after a refused create", r.Method, r.URL.Path)
+		w.WriteHeader(404)
+		w.Write([]byte(`{"message":"Not found"}`))
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	_, err := client.Recipes().Import(context.Background(), 14116, []byte(`{"name":"r","code":{},"config":[]}`))
+	if err == nil {
+		t.Fatal("Import succeeded, want the API's refusal")
+	}
+	var refused *MutationRefusedError
+	if !errors.As(err, &refused) {
+		t.Fatalf("error = %v (%T), want *MutationRefusedError", err, err)
+	}
+	if !strings.Contains(err.Error(), "can't be assigned to the root folder") {
+		t.Errorf("error = %q, want the API's reason", err.Error())
+	}
+}
+
+// A success response with no id must fail clearly rather than produce a
+// GET /recipes/0 404.
+func TestRecipeService_Import_MissingIDFailsClearly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == "POST" && r.URL.Path == "/recipes" {
+			w.Write([]byte(`{"success":true}`))
+			return
+		}
+		t.Errorf("unexpected %s %s after a create with no id", r.Method, r.URL.Path)
+		w.WriteHeader(404)
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	_, err := client.Recipes().Import(context.Background(), 14116, []byte(`{"name":"r","code":{},"config":[]}`))
+	if err == nil || !strings.Contains(err.Error(), "no recipe id") {
+		t.Fatalf("error = %v, want a missing-id error", err)
+	}
+}
+
+// The Jobs API has no page-size parameter, so --limit must be applied to the
+// response instead of being sent as per_page (#109).
+func TestRecipeService_ListJobs_LimitAppliedClientSide(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Has("per_page") {
+			t.Errorf("sent per_page=%s; the Jobs API has no page size", r.URL.Query().Get("per_page"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ListResult[Job]{Items: []Job{
+			{ID: "j-1"}, {ID: "j-2"}, {ID: "j-3"}, {ID: "j-4"}, {ID: "j-5"},
+		}})
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	jobs, err := client.Recipes().ListJobs(context.Background(), 42, &JobListOptions{Limit: 2})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(jobs) != 2 || jobs[0].ID != "j-1" || jobs[1].ID != "j-2" {
+		t.Errorf("got %+v, want the first 2 jobs", jobs)
+	}
+
+	all, err := client.Recipes().ListJobs(context.Background(), 42, &JobListOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(all) != 5 {
+		t.Errorf("no limit: got %d jobs, want 5", len(all))
+	}
+}
+
+// The list endpoint returns job_correlation_id on each item; it must survive
+// into --json output, as it does for jobs get (#109).
+func TestRecipeService_ListJobs_KeepsJobCorrelationID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"items":[{"id":"j-1","recipe_id":42,"status":"succeeded","job_correlation_id":"corr-xyz"}]}`))
+	}))
+	defer srv.Close()
+
+	client := NewHTTPClient(srv.URL, "test-token")
+	jobs, err := client.Recipes().ListJobs(context.Background(), 42, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(jobs) != 1 || jobs[0].JobCorrelationID != "corr-xyz" {
+		t.Fatalf("got %+v, want job_correlation_id corr-xyz", jobs)
+	}
+	out, _ := json.Marshal(jobs[0])
+	if !strings.Contains(string(out), `"job_correlation_id":"corr-xyz"`) {
+		t.Errorf("re-encoded job %s lacks job_correlation_id", out)
+	}
+}

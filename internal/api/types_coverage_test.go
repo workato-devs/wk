@@ -105,6 +105,7 @@ func TestStructFieldCoverage(t *testing.T) {
 				"title", "is_error", "error", "is_poll_error",
 				"calling_recipe_id", "calling_job_id",
 				"root_recipe_id", "root_job_id", "master_job_id",
+				"job_correlation_id",
 			},
 		},
 		{

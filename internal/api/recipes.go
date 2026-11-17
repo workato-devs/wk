@@ -75,12 +75,25 @@ func (s *recipeService) Import(ctx context.Context, folderID int, data []byte) (
 	}
 	body["folder_id"] = strconv.Itoa(folderID)
 
-	var result struct {
-		Success bool `json:"success"`
-		ID      int  `json:"id"`
-	}
-	if err := s.client.do(ctx, "POST", "/recipes", body, &result); err != nil {
+	// POST /recipes answers a refused create with HTTP 200 and
+	// {"success":false,"errors":{...}}, so check the body before following
+	// up with a GET. Otherwise the refusal surfaces as a 404 on
+	// GET /recipes/0 and the API's actual reason is lost.
+	resp, err := s.client.doRaw(ctx, "POST", "/recipes", body)
+	if err != nil {
 		return nil, err
+	}
+	if err := parseMutationRefusal(fmt.Sprintf("creating recipe in folder %d", folderID), resp); err != nil {
+		return nil, err
+	}
+	var result struct {
+		ID int `json:"id"`
+	}
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("creating recipe in folder %d: unexpected response: %w", folderID, err)
+	}
+	if result.ID == 0 {
+		return nil, fmt.Errorf("creating recipe in folder %d: the API reported success but returned no recipe id", folderID)
 	}
 	return s.Get(ctx, result.ID)
 }
@@ -342,9 +355,6 @@ func (s *recipeService) ListJobs(ctx context.Context, recipeID int, opts *JobLis
 		if opts.Status != "" && opts.Status != "all" {
 			params.Set("status", opts.Status)
 		}
-		if opts.Limit > 0 {
-			params.Set("per_page", strconv.Itoa(opts.Limit))
-		}
 	}
 	path := fmt.Sprintf("/recipes/%d/jobs", recipeID)
 	if len(params) > 0 {
@@ -353,6 +363,11 @@ func (s *recipeService) ListJobs(ctx context.Context, recipeID int, opts *JobLis
 	var result ListResult[Job]
 	if err := s.client.do(ctx, "GET", path, nil, &result); err != nil {
 		return nil, err
+	}
+	// The Jobs API has no page-size parameter (it returns up to 1,000 jobs
+	// per call), so a limit can only be applied here, after the fetch.
+	if opts != nil && opts.Limit > 0 && len(result.Items) > opts.Limit {
+		result.Items = result.Items[:opts.Limit]
 	}
 	return result.Items, nil
 }
