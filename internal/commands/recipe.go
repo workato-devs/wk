@@ -502,7 +502,7 @@ func newRecipesJobsCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&status, "status", "all", "Filter by status (succeeded, failed, all)")
-	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of jobs to return")
+	cmd.Flags().IntVar(&limit, "limit", 0, "Maximum number of jobs to show (applied after the fetch: the API returns up to 1,000 jobs per call and has no page size)")
 	cmd.AddCommand(newRecipesJobsGetCmd())
 	cmd.AddCommand(newRecipesJobsRetryCmd())
 	return cmd

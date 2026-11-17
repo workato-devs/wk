@@ -111,6 +111,9 @@ type Job struct {
 	RootRecipeID    *int       `json:"root_recipe_id,omitempty"`
 	RootJobID       *string    `json:"root_job_id,omitempty"`
 	MasterJobID     *string    `json:"master_job_id,omitempty"`
+	// JobCorrelationID is returned by both the list and the single-job
+	// endpoints, so it lives here rather than on JobDetail.
+	JobCorrelationID string `json:"job_correlation_id,omitempty"`
 }
 
 // JobDetail is the single-job response from GET /recipes/{id}/jobs/{job_id}.
@@ -124,7 +127,6 @@ type JobDetail struct {
 	CallingJobHandle string      `json:"calling_job_handle,omitempty"`
 	Lines            []JobLine   `json:"lines,omitempty"`
 	ErrorParts       *ErrorParts `json:"error_parts,omitempty"`
-	JobCorrelationID string      `json:"job_correlation_id,omitempty"`
 }
 
 // JobLine represents a single step in a job execution trace. Beyond the
